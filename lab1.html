@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 1 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 1: The Artemis Board and Bluetooth</h1>
+            </header>
+
+            <section class="project-section" id="lab1a">
+                <h2 class="section-title">Lab 1A</h2>
+                <div class="section-content">
+                    <p>
+                        The goal of lab 1A is to setup and become familiar with the Arduino IDE and the Artemis board.
+                    </p>
+                </div>
+            </section>
+
+            <section class="project-section" id="prelab">
+                <h2 class="section-title">Prelab</h2>
+                <div class="section-content">
+                    <p>
+                        I have the Arduino IDE already installed on my laptop from my previous classes. Going into help, then "Check for Arduino IDE Updates," I updated my Arduino IDE to the latest version. I copied the json link for Sparkfun Apollo3 boards manager from Sparkfun Electronics's <a href="https://learn.sparkfun.com/tutorials/artemis-development-with-arduino" target="_blank">Artemis Development with the Arduino IDE</a> page and pasted it to the Additional Boards Manager URLs in the Arduino IDE Settings.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig1_boards_manager_url.png" alt="Sparkfun Apollo3 boards manager json URL in Arduino IDE settings">
+                        <figcaption><strong>Figure 1.</strong> Sparkfun Apollo3 boards manager json is the second link in the image</figcaption>
+                    </figure>
+                    <p>
+                        Once the .json file has been added, I installed the latest version of the SparkFun Apollo3 Boards in the Boards Manager.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig2_boards_installed.png" alt="SparkFun Apollo3 Boards installed in Boards Manager">
+                        <figcaption><strong>Figure 2.</strong> SparkFun Apollo3 Boards installed</figcaption>
+                    </figure>
+                    <p>
+                        Prior to lab, I looked through the <a href="https://www.sparkfun.com/products/15443" target="_blank">SparkFun RedBoard Artemis Nano</a> description and features, and the <a href="https://forum.sparkfun.com/viewforum.php?f=167" target="_blank">Artemis forums</a>.
+                    </p>
+                </div>
+            </section>
+
+            <section class="project-section" id="connecting">
+                <h2 class="section-title">Connecting to the Artemis Board</h2>
+                <div class="section-content">
+                    <p>
+                        In lab, I hooked up the Artemis Board to my laptop, selected RedBoard Artemis Nano from the list of boards, and chose the correct corresponding port, /dev/cu.usbserial-10.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig3_board_port.png" alt="Selecting the correct board and port in Arduino IDE">
+                        <figcaption><strong>Figure 3.</strong> Choosing the correct board and port</figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <section class="project-section" id="blink">
+                <h2 class="section-title">Blink</h2>
+                <div class="section-content">
+                    <p>
+                        To test that I completed the setup correctly, I went into File → Examples → 01.Basics, and ran Blink, an example code from Arduino.
+                    </p>
+                    <p>
+                        When I first ran Blink, no changes were effected on the Artemis board. I soon realized that I forgot to select the correct port (/dev/cu.usbserial-10) on the Arduino IDE. Selecting the correct board connected the Artemis Board to the laptop, allowing me to run Blink and the other example codes.
+                    </p>
+                    <p>
+                        The blue LED on the Artemis board blinks every second, giving an initial indication that the Artemis board connects correctly to my laptop and the IDE environment works. Below is a video showing the on-board Artemis LED blinking.
+                    </p>
+                    <div class="video-container">
+                        <p><em>(Video placeholder: Artemis LED blinking)</em></p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="project-section" id="serial">
+                <h2 class="section-title">Serial</h2>
+                <div class="section-content">
+                    <p>
+                        In the next part of lab, I ran Example4_Serial, from RedBoard Artemis Nano example code. The baud rate was set to 115200. I entered "Hello world!" into the serial monitor dialog box, and the Artemis board echoed back "Hello world!"
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig4_serial.png" alt="Serial monitor showing echo of Hello world!">
+                        <figcaption><strong>Figure 4.</strong> Serial monitor echoing "Hello world!"</figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <section class="project-section" id="analogread">
+                <h2 class="section-title">analogRead</h2>
+                <div class="section-content">
+                    <p>
+                        Then, I ran Example3_analogRead from RedBoard Artemis Nano example code to test the temperature sensor on the Artemis board. I tried blowing and touching the chip to change its temperature. The video below demonstrates this temperature change.
+                    </p>
+                    <div class="video-container">
+                        <p><em>(Video placeholder: Temperature sensor demonstration)</em></p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="project-section" id="microphone">
+                <h2 class="section-title">MicrophoneOutput</h2>
+                <div class="section-content">
+                    <p>
+                        Lastly, I ran Example1_MicrophoneOutput in RedBoard Artemis Nano, PDM example code to test the board's microphone. I tried whistling at different pitches to change its detected highest frequency. As shown in the video below, the Artemis board microphone picks up sound and correctly determines its relative highest frequency.
+                    </p>
+                    <div class="video-container">
+                        <p><em>(Video placeholder: Microphone output demonstration)</em></p>
+                    </div>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+    <script src="./js/script.js"></script>
+</body>
+</html>
