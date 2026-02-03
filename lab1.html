@@ -29,49 +29,49 @@
                 <h2 class="section-title">Lab 1A</h2>
                 <div class="section-content">
                     <p>
-                        The goal of lab 1A is to setup and become familiar with the Arduino IDE and the Artemis board.
+                        The goal of Lab 1A is to set up and become familiar with the Arduino IDE and the Artemis board.
                     </p>
                 </div>
             </section>
 
-            <section class="project-section" id="prelab">
+            <section class="project-section" id="1a_prelab">
                 <h2 class="section-title">Prelab</h2>
                 <div class="section-content">
                     <p>
-                        I have the Arduino IDE already installed on my laptop from my previous classes. Going into help, then "Check for Arduino IDE Updates," I updated my Arduino IDE to the latest version. I copied the json link for Sparkfun Apollo3 boards manager from Sparkfun Electronics's <a href="https://learn.sparkfun.com/tutorials/artemis-development-with-arduino" target="_blank">Artemis Development with the Arduino IDE</a> page and pasted it to the Additional Boards Manager URLs in the Arduino IDE Settings.
+                        I already have the Arduino IDE installed on my laptop from previous classes. Going into help, then "Check for Arduino IDE Updates," I updated it to the latest version. I copied the JSON link for Sparkfun Apollo3 boards manager from Sparkfun Electronics's <a href="https://learn.sparkfun.com/tutorials/artemis-development-with-arduino" target="_blank">Artemis Development with the Arduino IDE</a> page and pasted it to the Additional Boards Manager URLs in the Arduino IDE Settings.
                     </p>
                     <figure>
-                        <img src="./images/lab1/fig1_boards_manager_url.png" alt="Sparkfun Apollo3 boards manager json URL in Arduino IDE settings">
+                        <img src="./images/lab1/fig1.png" alt="Sparkfun Apollo3 boards manager json URL in Arduino IDE settings">
                         <figcaption><strong>Figure 1.</strong> Sparkfun Apollo3 boards manager json is the second link in the image</figcaption>
                     </figure>
                     <p>
-                        Once the .json file has been added, I installed the latest version of the SparkFun Apollo3 Boards in the Boards Manager.
+                        I also installed the latest version of the SparkFun Apollo3 Boards in the Boards Manager.
                     </p>
                     <figure>
-                        <img src="./images/lab1/fig2_boards_installed.png" alt="SparkFun Apollo3 Boards installed in Boards Manager">
+                        <img src="./images/lab1/fig2.png" alt="SparkFun Apollo3 Boards installed in Boards Manager">
                         <figcaption><strong>Figure 2.</strong> SparkFun Apollo3 Boards installed</figcaption>
                     </figure>
                     <p>
-                        Prior to lab, I looked through the <a href="https://www.sparkfun.com/products/15443" target="_blank">SparkFun RedBoard Artemis Nano</a> description and features, and the <a href="https://forum.sparkfun.com/viewforum.php?f=167" target="_blank">Artemis forums</a>.
+                        Prior to lab, I read through <a href="https://www.sparkfun.com/products/15443" target="_blank">SparkFun RedBoard Artemis Nano</a> description and features, and the <a href="https://forum.sparkfun.com/viewforum.php?f=167" target="_blank">Artemis forums</a>.
                     </p>
                 </div>
             </section>
 
             <section class="project-section" id="connecting">
-                <h2 class="section-title">Connecting to the Artemis Board</h2>
+                <h2 class="section-title">Task 1: Connecting to the Artemis Board</h2>
                 <div class="section-content">
                     <p>
                         In lab, I hooked up the Artemis Board to my laptop, selected RedBoard Artemis Nano from the list of boards, and chose the correct corresponding port, /dev/cu.usbserial-10.
                     </p>
                     <figure>
-                        <img src="./images/lab1/fig3_board_port.png" alt="Selecting the correct board and port in Arduino IDE">
+                        <img src="./images/lab1/fig3.png" alt="Selecting the correct board and port in Arduino IDE">
                         <figcaption><strong>Figure 3.</strong> Choosing the correct board and port</figcaption>
                     </figure>
                 </div>
             </section>
 
             <section class="project-section" id="blink">
-                <h2 class="section-title">Blink</h2>
+                <h2 class="section-title">Task 2: Blink</h2>
                 <div class="section-content">
                     <p>
                         To test that I completed the setup correctly, I went into File → Examples → 01.Basics, and ran Blink, an example code from Arduino.
@@ -83,48 +83,348 @@
                         The blue LED on the Artemis board blinks every second, giving an initial indication that the Artemis board connects correctly to my laptop and the IDE environment works. Below is a video showing the on-board Artemis LED blinking.
                     </p>
                     <div class="video-container">
-                        <p><em>(Video placeholder: Artemis LED blinking)</em></p>
+                        <iframe width="560" height="315" src="https://www.youtube.com/embed/5DbF8ntzQrM?si=UTsGoXB40VdUn1Ss" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
                     </div>
                 </div>
             </section>
 
             <section class="project-section" id="serial">
-                <h2 class="section-title">Serial</h2>
+                <h2 class="section-title">Task 3: Serial</h2>
                 <div class="section-content">
                     <p>
                         In the next part of lab, I ran Example4_Serial, from RedBoard Artemis Nano example code. The baud rate was set to 115200. I entered "Hello world!" into the serial monitor dialog box, and the Artemis board echoed back "Hello world!"
                     </p>
                     <figure>
-                        <img src="./images/lab1/fig4_serial.png" alt="Serial monitor showing echo of Hello world!">
+                        <img src="./images/lab1/fig4.png" alt="Serial monitor showing echo of Hello world!">
                         <figcaption><strong>Figure 4.</strong> Serial monitor echoing "Hello world!"</figcaption>
                     </figure>
                 </div>
             </section>
 
             <section class="project-section" id="analogread">
-                <h2 class="section-title">analogRead</h2>
+                <h2 class="section-title">Task 4: analogRead</h2>
                 <div class="section-content">
                     <p>
                         Then, I ran Example3_analogRead from RedBoard Artemis Nano example code to test the temperature sensor on the Artemis board. I tried blowing and touching the chip to change its temperature. The video below demonstrates this temperature change.
                     </p>
                     <div class="video-container">
-                        <p><em>(Video placeholder: Temperature sensor demonstration)</em></p>
+                        <iframe width="560" height="315" src="https://www.youtube.com/embed/9zbBvtlPpy0?si=Z17QJm91HbWBksR6" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
                     </div>
                 </div>
             </section>
 
             <section class="project-section" id="microphone">
-                <h2 class="section-title">MicrophoneOutput</h2>
+                <h2 class="section-title">Task 5: MicrophoneOutput</h2>
                 <div class="section-content">
                     <p>
                         Lastly, I ran Example1_MicrophoneOutput in RedBoard Artemis Nano, PDM example code to test the board's microphone. I tried whistling at different pitches to change its detected highest frequency. As shown in the video below, the Artemis board microphone picks up sound and correctly determines its relative highest frequency.
                     </p>
                     <div class="video-container">
-                        <p><em>(Video placeholder: Microphone output demonstration)</em></p>
+                        <iframe width="560" height="315" src="https://www.youtube.com/embed/PtpkdxayAf4?si=irq-WResOSGobNGr" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
                     </div>
                 </div>
             </section>
+            <section class="project-section" id="lab1b">
+                <h2 class="section-title">Lab 1B</h2>
+                <div class="section-content">
+                    <p>
+                        Lab 1B establishes communication between my laptop and the Artemis board using the Bluetooth stack.  A data logger was build to record sensor data and its timestamps, setting up a debugging framework for future labs.
+                    </p>
+                </div>
+            </section>
+            <section class="project-section" id="1b_prelab">
+                <h2 class="section-title">Prelab</h2>
+                <div class="section-content">
+                    <p>
+                        Prior to lab, I read about the <a href="https://docs.arduino.cc/libraries/arduinoble/" target="_blank">Bluetooth Low Energy (BLE)</a> that I will be using to establish communication between my laptop and Artemis board.
+                    </p>
+                    <p>
+                        My laptop sends Python commands on Jupyter Notebook to the Artemis board programmed with the Arduino programming language. 
+                    </p>
+                    <h3 class="sub-section-title">Setup:</h2>
+                    <p>
+                        On my laptop, I originally have Python version 3.9.12 installed, but to use Bleak in Jupyter Lab notebook, I needed to install Python versions 3.10-3.13. I avoided Python version 3.14 due to known async issues with Bleak and the lab codebase.
+                    </p>
+                    <p>
+                        I downloaded the Python version 3.13 installer from the official Python website’s download page, so now I have both Python version 3.9.12 and 3.13 on my laptop. Pip is installed automatically along with the python.
+                    </p>
+                    <p>
+                        In the Command Line Interface (CLI), I ran Python --version to get the version number. When I first downloaded Python version 3.13, running Python –version gave me Python 3.9.12, and running Python 3.13 gave me Python 3.13. After closing this terminal window and working in a new one the next day, this distinction goes away, and Python --version gives me Python 3.13.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig5.png" alt="Checking version of Python and pip">
+                        <figcaption><strong>Figure 5.</strong> Checking version of Python and pip</figcaption>
+                    </figure>
+                    <p>
+                        Using the command python3.13 -m pip install –user virtualenv, I installed venv. Then, I created my project directory. Inside the project directory, I created a virtual environment, an isolated folder to contain its own Python scripts, libraries, and interpreter, separated from the Python installed on my operating system, and named it “FastRobots_ble”
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig6.png" alt="files and directories">
+                        <figcaption><strong>Figure 6.</strong>Files and directories</figcaption>
+                    </figure>
+                    <p>
+                        Next, I activated the virtual environment and installed the required packages. The installation completed without errors, as shown in the image below, but when I opened Jupyter Notebook and ran the imports, it reported a missing package. I forgot to capture the error message, but the issue was resolved by reinstalling the package directly within Jupyter Notebook.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig7.png" alt="Python package installation indicate already satisfied">
+                        <figcaption><strong>Figure 7.</strong> Python package installation indicate already satisfied</figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab1/fig8.png" alt="Install the packages again in Jupyter Lab">
+                        <figcaption><strong>Figure 8.</strong> Install the packages again in Jupyter Lab</figcaption>
+                    </figure>
+                    <h3 class="sub-section-title">Configuration:</h2>
+                    <p>
+                        Next, I set up Bluetooth Low Energy communication between the Artemis board and my computer. I installed the ArduinoBLE library, burned the BLE sketch to the Artemis, then configured both sides to communicate with each other. This involved updating the MAC address and generating a unique UUID so I connect to my own board rather than a classmate's.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig9.png" alt="Arduino IDE prints Artemis board MAC address">
+                        <figcaption><strong>Figure 9.</strong> Arduino IDE prints Artemis board MAC address</figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab1/fig10.png" alt="yaml">
+                        <figcaption><strong>Figure 10.</strong> yaml</figcaption>
+                    </figure>
+                    <p>
+                        Before carrying out lab tasks, I tested BLE using demo.ipynb in JupyterLab. The below image shows the laptop successfully connecting to the Artemis board.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig11.png" alt="Python code to connect to Artemis">
+                        <figcaption><strong>Figure 11.</strong> Python code to connect to Artemis</figcaption>
+                    </figure>
+                    <p>
+                        This connection activity is also logged in ble.log.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig12.png" alt="Connection activity logged in ble.log">
+                        <figcaption><strong>Figure 12.</strong> Connection activity logged in ble.log</figcaption>
+                    </figure>
+                    <p>
+                        I tested bidirectional BLE communication with the Artemis board.
+                    </p>
+                    <p>
+                        First, I received data by reading float and string GATT characteristics.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig13.png" alt="Python for read float and string GATT charactertistics">
+                        <figcaption><strong>Figure 13</strong> IIPython for read float and string GATT charactertisticsII</figcaption>
+                    </figure>
+                    <p>
+                        Next, I sent a PING command to the Artemis board, which returned "PONG." 
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig14.png" alt="Laptop send PING to Artemis">
+                        <figcaption><strong>Figure 14.</strong> Send PING</figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab1/fig15.png" alt="Artemis send back PONG to laptop">
+                        <figcaption><strong>Figure 15.</strong> Artemis send back PONG to laptop</figcaption>
+                    </figure>
+                    <p>
+                        The SEND_TWO_INTS command transmitted two integers separated by a delimiter, and the Artemis printed to its serial monitor.
+                    </p>
+                </div>
+            </section>
+            <section class="project-section" id="echo_command">
+                <p>
+                    To test my robot’s sensors more effectively in future labs, I build a wireless debugging system which allows me to receive timestamped messages from the Artemis board. This framework was build incrementally, through the tasks below.
+                </p>
+                <h2 class="section-title">Task 1: ECHO command</h2>
+                <div class="section-content">
+                    <p>
+                        I implemented an ECHO command that sends a string, "HiHello", fom the laptop to the Artemis, then received and printed the augmented reply, "Robot says -> HiHello :)".
+                    </p>
+                    <p>Arduino:</p>
+                    <script src="https://gist.github.com/my394yang/db91cd6019789f6107822e84c11c4664.js"></script>
+                    <p>Python:</p>
+                    <figure>
+                        <img src="./images/lab1/fig16.png" alt="ECHO command message from Artemis">
+                        <figcaption><strong>Figure 16.</strong> ECHO command message from Artemis</figcaption>
+                    </figure>   
+                </div>
+            </section>
+            <section class="project-section" id="send_three_floats">
+                <h2 class="section-title">Task 2: SEND_THREE_FLOATS command</h2>
+                <div class="section-content">
+                    <p>
+                        I send three floats separated by delimiter "|" to the Artemis board from my laptop. The Arduino sketch extracts the three float values and print them one by one.
+                    </p>
+                    <p>Arduino:</p>
+                    <script src="https://gist.github.com/my394yang/667cd7cfb3fc14f7495046cf69dfcf42.js"></script>
+                    <p>Python:</p>
+                    <script src="https://gist.github.com/my394yang/913f78bac45e90a872a12134af2ed6b4.js"></script>
+                </div>
+            </section>
+            <section class="project-section" id="get_time_millis">
+                <h2 class="section-title">Task 3: GET_TIME_MILLIS command</h2>
+                <div class="section-content">
+                    <p>
+                        I added the GET_TIME_MILLIS command to the Artemis. Like many of the following lab tasks, this new command is added as a new entry in the case statement of the Arduino code and a corresponding entry in cmd_types.py in the Python code. 
+                    </p>
+                    <p>Arduino:</p>
+                    <script src="https://gist.github.com/my394yang/6651cc945fff19212b2e1c785e05d6f0.js"></script>
+                    <p>Python:</p>
+                    <script src="https://gist.github.com/my394yang/688f11cefdccb3363e9e23684759e6b9.js"></script>
+                    <p>
+                        When the command is received by the Artemis, it retrieves the current time in milliseconds using millis(), formats it as a string with the prefix "T:", and writes it to the BLE characteristic. In the example shown, sending the command returned "T:72216", indicating the Artemis had been running for about 72 seconds.
+                    </p>
+                    <p>Python:</p>
+                    <figure>
+                        <img src="./images/lab1/fig17.png" alt="GET_TIME_MILLIS command message from Artemis">
+                        <figcaption><strong>Figure 17.</strong> GET_TIME_MILLIS command message from Artemis</figcaption>
+                    </figure>  
+                    <p>Arduino:</p>
+                    <script src="https://gist.github.com/my394yang/6dc08f53c8a7e07c1ef348b61a7d8711.js"></script>
+                    <p>
+                        I added serial.print to check that the conversion was done correctly.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig18.png" alt="Serial print">
+                        <figcaption><strong>Figure 18.</strong> Serial print</figcaption>
+                    </figure>  
+                </div>
+            </section>
+            <section class="project-section" id="notification_handler">
+                <h2 class="section-title">Task 4: Notification Handler</h2>
+                <div class="section-content">
+                    <p>
+                        I set up a notification handler in Python to receive string valye from Artemis board. In the callback function, I extract the time from the string.
+                    </p>
+                    <p>
+                        During my first attempt, I got this error:
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig19.png" alt="Task 4 error">
+                        <figcaption><strong>Figure 19.</strong> IITask 4 errorII</figcaption>
+                    </figure> 
+                    <p>
+                        I keep on doing a function call to get_time() instead of passing the function itself, get_time, to start the notification handling. Because I don’t have any argument for get_time(), I get an error.
+                    </p>
+                    <p>
+                        I gave the start_notify function get_time function, and the BLE library which defines the start_notify function waits for data from the Artemis to arrive. When data arrives, the BLE library calls the get_time function with the arrived uuid and byte_array and pass them to the get_time function as arguments.
+                    </p>
+                    <p>
+                        Another issue in this screenshot is that I did s.split(“:”)[1:], and that gives me a list with the first element and the other empty elements [‘12345’] for ‘T:12345,’ but I want a string instead, so I should do s.split(“:”)[1] that gives me item at index 1.
+                    </p>
+                    <p>
+                        If I run task 3, the first line of code, ble.send_command, doesn’t output anything. I have to call the second line of code, ble.receive_string to get T:2445810.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig20.png" alt="Before notification handler">
+                        <figcaption><strong>Figure 20.</strong> Before notification handler</figcaption>
+                    </figure> 
+                    <p>
+                        If I run task 4, notification handler, then run line 50, I can continuously send get_time_millis command to artemis, artemis returns data, and ble.send_command outputs the time in ms.
+                    </p>
+                    <figure>
+                        <img src="./images/lab1/fig21.png" alt="After notification handler">
+                        <figcaption><strong>Figure 21.</strong> After notification handler</figcaption>
+                    </figure> 
+                    <p>Python:</p>
+                    <script src="https://gist.github.com/my394yang/688f11cefdccb3363e9e23684759e6b9.js"></script>
+                    <p>
+                        When the command is received by the Artemis, it retrieves the current time in milliseconds using millis(), formats it as a string with the prefix "T:", and writes it to the BLE characteristic. In the example shown, sending the command returned "T:100630", indicating the Artemis had been running for about 10 seconds.
+                    </p>
+                    <p>Python:</p>
+                    <script src="https://gist.github.com/my394yang/7c525833be67ffd878af463075255437.js"></script>
+                    <p>
+                        I also added a line, stop_notify, to “unsubscribe” to the notification handler.
+                    </p>
+                </div>
+            </section>
+            <section class="project-section" id="data_transfer_rate">
+                <h2 class="section-title">Task 5: data transfer rate</h2>
+                <div class="section-content">
+                    <p>
+                        For Task 5, I measured the effective data transfer rate when sending timestamps over BLE in real-time. On the Arduino side, I created a GET_CURRENT_TIME_LOOP case that loops 100 times, where each iteration gets the current time using millis(), formats it as a string like "T:123456", and immediately sends it to the laptop using writeValue(). On the Python side, I set up a notification handler function get_time() that receives each string, parses out the timestamp after the colon, and stores the values in lists. I registered this callback using ble.start_notify(), passing the function reference without parentheses so the BLE library can call it later when data arrives.
+                    </p>
+                    <p>
+                        My results showed that sending 101 messages took 8587 milliseconds, giving a data transfer rate of approximately 12 messages per second or 94 bytes per second. The key finding is that BLE transmission is the bottleneck. The Arduino must wait for each writeValue() to complete before continuing to the next loop iteration, which significantly limits how fast data can be collected and sent
+                    </p>
+                    <p>Arduino:</p>
+                    <script src="https://gist.github.com/my394yang/85984e3c44d48ea7277c15dad443b3f6.js"></script>
+                    <p>Python:</p>
+                    <figure>
+                        <img src="./images/lab1/fig22.png" alt="Get time stamp">
+                        <figcaption><strong>Figure 22.</strong> Get time stamp</figcaption>
+                    </figure> 
+                    <figure>
+                        <img src="./images/lab1/fig23.png" alt="Calculate data transfer rate">
+                        <figcaption><strong>Figure 23.</strong> Calculate data transfer rate</figcaption>
+                    </figure> 
+                </div>
+            </section>
+            <section class="project-section" id="data_transfer_rate">
+                <h2 class="section-title">Task 6: store time stamp, SEND_TIME_DATA command</h2>
+                <div class="section-content">
+                    <p>
+                        For Task 6, I implemented a store-then-send approach to compare with Task 5's real-time transmission. On the Arduino side, I defined a global array unsigned long arr[ARRAY_SIZE] with ARRAY_SIZE = 100 to store timestamps. I created a STORE_TIME_STAMP case that loops 100 times and stores millis() into the array at each iteration without sending anything over BLE. I then created a separate SEND_TIME_DATA case that loops through the array and sends each stored timestamp as a string to the laptop, with a 10ms delay between sends to prevent data loss.
+                    </p>
 
+                    <p>
+                        On the Python side, I reused the same notification handler from Task 5 to receive and store the incoming timestamps. After running both commands, I checked len(times_int) to verify all 100 timestamps were received.
+                    </p>
+                    <p>
+                        My results showed that the time elapsed between the first and last timestamp was only 1 millisecond, meaning the Arduino collected all 100 data points almost instantaneously. However, I initially only received 43 out of 100 messages because the Arduino was sending faster than BLE could handle. Adding a small delay in SEND_TIME_DATA fixed this issue. The key finding is that storing data first removes the BLE bottleneck during collection, allowing the Arduino to record data much faster than Method 1.
+                    </p>
+                    <p>Arduino:</p>
+                    <script src="https://gist.github.com/my394yang/e3fa9bb1bf8b18a2f9e563df05e65431.js"></script>
+                    <p>Python:</p>
+                    <figure>
+                        <img src="./images/lab1/fig24.png" alt="Get time stamp but faster">
+                        <figcaption><strong>Figure 24.</strong> Get time stamp but faster</figcaption>
+                    </figure> 
+                    The two images below shows without (only 43 data are logged) and with added delay in Arduino loop. 
+                    <figure>
+                        <img src="./images/lab1/fig25.png" alt="43 data logged">
+                        <figcaption><strong>Figure 25.</strong> Get time stamp but faster</figcaption>
+                    </figure> 
+                    <figure>
+                        <img src="./images/lab1/fig26.png" alt="All data (100)">
+                        <figcaption><strong>Figure 26.</strong> Get time stamp but faster</figcaption>
+                    </figure> 
+                </div>
+            </section>
+            <section class="project-section" id="data_transfer_rate">
+                <h2 class="section-title">Task 7: temperature reading and time stamp</h2>
+                <div class="section-content">
+                    <p>
+                        For Task 7, I extended the store-then-send approach to include temperature readings alongside timestamps. On the Arduino side, I defined a second global array float temp_arr[ARRAY_SIZE] to store temperature readings. I created a STORE_TIME_TEMP_STAMP case that loops through both arrays concurrently, storing millis() into the time array and getTempDegF() into the temperature array at each iteration, so that corresponding indices represent data collected at the same moment. I then created a GET_TEMP_READINGS case that loops through both arrays and sends each data point as a formatted string like "Temperature:72.5, Time:123456" to the laptop, with a 10ms delay between sends.
+                    </p>
+                    <p>
+                        On the Python side, I wrote a new notification handler get_time_temp() that parses the incoming string by first splitting on the comma to separate temperature and time, then splitting each part on the colon to extract the numeric values. The temperature is converted to a float and appended to temp_float_array, while the time is converted to an int and appended to time_int_array. This allows me to collect synchronized temperature and time data stamp.
+                    </p>
+                    <p>Arduino:</p>
+                    <script src="https://gist.github.com/my394yang/387e4017852e354ebf82ab31aa9e6138.js"></script>
+                    <p>Python:</p>
+                    <figure>
+                        <img src="./images/lab1/fig27.png" alt="Parsed temperature reading and concurrent time stamp">
+                        <figcaption><strong>Figure 27.</strong> Parsed temperature reading and concurrent time stamp</figcaption>
+                    </figure> 
+                </div>
+            </section>
+            <section class="project-section" id="data_transfer_rate">
+                <h2 class="section-title">Task 8: Differences between these two methods</h2>
+                <div class="section-content">
+                    <p>
+                        Method 1, sending data immediately over BLE, achieved a data transfer rate of approximately 12 messages per second or 94 bytes per second. The main bottleneck is BLE transmission. The Arduino must wait for each writeValue() to complete before continuing to the next iteration. The advantage of this method is that data is available in real-time on the laptop, and there are no memory constraints since data is not stored on the Artemis. However, this approach is too slow for capturing rapid events.
+                    </p>
+                    <p>
+                        Method 2, storing data first then sending, can collect data much faster because it is not limited by BLE transmission speed. My results showed that collecting 100 timestamps took approximately 1 millisecond, which translates to roughly 100,000 samples per second. The disadvantage is that this method is limited by the Artemis's RAM. With 384 kB of RAM available, the theoretical maximum storage is 393,216 bytes. For timestamps only (4 bytes each as unsigned long), this allows approximately 98,304 values. For timestamps plus temperature readings, that is 8 bytes per data point, which allows approximately 49,152 data points. Since the program code, BLE stack, and other variable declaration also requires memory, a realistic estimate will be even smaller. 
+                    </p>
+                    <p>
+                        Method 1 would be preferred if a lot of data will be collected (data will be collected in long duration), and the speed of sampling will not matter. Method 2 would be preferred for capturing rapid sensor changes, where high sampling rates are critical but the event duration is short enough to fit within memory constraints.
+                    </p>
+                </div>
+            </section>
+            <section class="project-section" id="data_transfer_rate">
+                <h2 class="section-title">References:</h2>
+                <div class="section-content">
+                    <p>
+                        I referenced <a href="https://jcai2565.github.io/2025/02/02/lab1.html">Jeffery Cai</a> and <a href="https://jack-d-long.github.io/fast-robots/lab1b/">Jack Long</a>'s websites to format and write my lab report.
+                    </p>
+                </div>
+            </section>
         </article>
     </main>
     <footer id="footer">
