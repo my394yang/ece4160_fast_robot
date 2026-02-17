@@ -193,11 +193,32 @@ delay(2000);</code></pre>
 
                     <p>
                         Figure 5 shows the pitch and roll when the IMU is placed flat on the table (expected: pitch ≈ 0°,
-                        roll ≈ 0°). The measured pitch is ~0.11° and roll is ~−0.95°, which are both very close to 0°.
+                        roll ≈ 0°). The measured pitch is ~0.11° and roll is ~−0.95°, both very close to 0°, confirming
+                        the accelerometer is reading correctly at the flat position.
                     </p>
                     <figure>
                         <img src="./images/lab2/fig5.png" alt="Accelerometer pitch and roll, IMU flat (0 degrees)">
                         <figcaption><strong>Figure 5.</strong> Accelerometer pitch (~0.11°) and roll (~−0.95°) when the IMU is placed flat. Expected: 0°, 0°.</figcaption>
+                    </figure>
+
+                    <p>
+                        Figure 6 shows the pitch and roll when the IMU is again placed flat — the pitch stays at ~0.11°
+                        and roll at ~−0.95°, consistent with Figure 5. This was collected at the desk edge position
+                        to prepare for the −90° edge calibration measurement.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig6.png" alt="Accelerometer pitch and roll, IMU flat on desk edge">
+                        <figcaption><strong>Figure 6.</strong> Accelerometer pitch and roll when the IMU is placed flat on the desk edge. Expected: pitch ≈ 0°, roll ≈ −90°. The roll reads ~−0.95° rather than −90° as the IMU was placed on the edge of the wrong axis.</figcaption>
+                    </figure>
+
+                    <p>
+                        Figure 7 shows pitch and roll at the +90° edge position. Roll reads ~88.2° and pitch reads ~45.9°.
+                        The roll is close to the expected 90°, though pitch also shows a compound tilt because achieving
+                        a perfectly pure single-axis 90° rotation by hand on the desk edge is difficult.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig7.png" alt="Accelerometer pitch and roll, IMU at +90 degree edge">
+                        <figcaption><strong>Figure 7.</strong> Accelerometer pitch (~45.9°) and roll (~88.2°) at the +90° edge position. Roll is close to the expected 90°.</figcaption>
                     </figure>
 
                     <p>
@@ -228,9 +249,13 @@ delay(2000);</code></pre>
                         and my laptop (Jupyter Lab). I combined the BLE communication code into <code>lab2_imu.ino</code>,
                         adding the required libraries, UUIDs, and case statements for commands including
                         <code>GET_ACCEL_DATA</code>, <code>GET_ACCEL_NOISE</code>, <code>GET_GYRO_DATA</code>, and
-                        <code>GET_COMPL_DATA</code>. In Python, I wrote notification handlers that parse the
-                        comma-separated BLE strings and plot pitch and roll on graphs with time (seconds) on the x-axis.
+                        <code>GET_COMPL_DATA</code>. When I first compiled after combining everything, I got a
+                        redefinition error because both files defined <code>handle_command()</code> and <code>read_data()</code>.
                     </p>
+                    <figure>
+                        <img src="./images/lab2/fig8.png" alt="Compilation error when combining BLE and IMU code">
+                        <figcaption><strong>Figure 8.</strong> Compilation error: redefinition of <code>handle_command()</code> and <code>read_data()</code> when first combining <code>ble_arduino.ino</code> with <code>lab2_imu.ino</code>. Resolved by merging into a single sketch folder with copied header files.</figcaption>
+                    </figure>
                     <figure>
                         <img src="./images/lab2/fig8.png" alt="Compilation error when combining BLE and IMU code">
                         <figcaption><strong>Figure 8.</strong> Compilation error encountered when first combining <code>ble_arduino.ino</code> and <code>lab2_imu.ino</code>. Resolved by copying header files into the <code>lab2_imu</code> sketch folder.</figcaption>
@@ -323,13 +348,15 @@ time.sleep(4)
 ble.stop_notify(ble.uuid['RX_STRING'])
 print(f"Collected {len(noise_timestamps)}/100 samples")</code></pre>
                     <p>
-                        Figure 9 shows the noise in the time domain. With the IMU flat and stationary, pitch noise is
-                        within roughly ±1° and roll noise is within ±1.5°, which is characteristic of the ICM-20948's
-                        built-in digital low-pass filter already doing some hardware-level filtering.
+                        Figure 9 shows the noise in the time domain with the IMU held at an angled position (~−65° pitch,
+                        ~88° roll). The pitch signal (red) has visible noise oscillations of roughly ±5°, while the roll
+                        signal (blue) is much more stable with smaller oscillations. The overall pattern shows that the
+                        accelerometer is sensitive to small vibrations, especially at non-flat orientations where
+                        cross-axis coupling is greater.
                     </p>
                     <figure>
-                        <img src="./images/lab2/fig9.png" alt="Accelerometer noise in time domain">
-                        <figcaption><strong>Figure 9.</strong> Accelerometer pitch (red) and roll (blue) noise in the time domain. Sampling rate: ~153 Hz. Noise is roughly ±1° pitch, ±1.5° roll.</figcaption>
+                        <img src="./images/lab2/fig9.png" alt="Accelerometer noise in time domain with Python code">
+                        <figcaption><strong>Figure 9.</strong> Python code and resulting time-domain plot of accelerometer pitch (red, ~−65°) and roll (blue, ~88°) noise. Sampling rate: ~153 Hz over ~0.65 s (100 samples).</figcaption>
                     </figure>
                     <pre><code># Python: FFT using scipy
 from scipy.fftpack import fft
@@ -442,9 +469,21 @@ while time.time() - t_start &lt; 5:
     time.sleep(0.05)
 print(f"Collected {len(timestamps)} samples in 5 seconds")
 ble.stop_notify(ble.uuid['RX_STRING'])</code></pre>
+                    <p>
+                        Figure 11 shows the LPF output exhibiting an initialization artifact — the LPF starts far from
+                        the true angle and exponentially converges to it over several seconds. This occurred because
+                        <code>accel_pitch_lpf</code> was initialized to 0 rather than to the first real sensor reading.
+                        This was fixed by initializing the LPF variables at the end of <code>setup()</code> to the
+                        actual first IMU reading:
+                    </p>
+                    <pre><code>// Arduino: setup() — initialize LPF to first real reading to avoid artifact
+myICM.getAGMT();
+updateAccelPitchRoll();
+accel_roll_lpf  = accel_roll;
+accel_pitch_lpf = accel_pitch;</code></pre>
                     <figure>
-                        <img src="./images/lab2/fig11.png" alt="Accelerometer pitch raw, pitch vs LPF">
-                        <figcaption><strong>Figure 11.</strong> Accelerometer pitch: raw (blue) vs. low-pass filtered (orange). With the IMU stationary, both lines overlap closely.</figcaption>
+                        <img src="./images/lab2/fig11.png" alt="LPF initialization artifact - exponential convergence">
+                        <figcaption><strong>Figure 11.</strong> LPF initialization artifact: pitch LPF (red) and roll LPF (blue) both start far from the true angle and exponentially converge because they were initialized to 0. Fixed by seeding LPF with the first real IMU reading in <code>setup()</code>.</figcaption>
                     </figure>
                     
                 </div>
@@ -548,8 +587,8 @@ print(f"Collected {len(gyro_timestamps)} samples in {DURATION}s")</code></pre>
                         delay means more frequent updates, smaller dt, and less drift accumulation.
                     </p>
                     <figure>
-                        <img src="./images/lab2/fig14.png" alt="Gyroscope pitch roll yaw at 20Hz sampling">
-                        <figcaption><strong>Figure 14.</strong> Gyroscope pitch, roll, and yaw at sample_delay = 0.05 s (~20 Hz). Drift is visible as a linear slope even with the IMU stationary.</figcaption>
+                        <img src="./images/lab2/fig14.png" alt="Gyroscope pitch, roll, yaw drift at sample_delay=0.05">
+                        <figcaption><strong>Figure 14.</strong> Gyroscope pitch (red), roll (blue), and yaw (green) over 5 seconds at sample_delay = 0.05 s (~20 Hz) with the IMU stationary. All three axes show clear linear drift: pitch drifts −7°, roll drifts +3.5°, and yaw drifts −15° — demonstrating bias integration over time.</figcaption>
                     </figure>
 
                     <h3>Complementary Filter</h3>
@@ -612,8 +651,8 @@ plt.legend(); plt.grid(True); plt.show()</code></pre>
                         while the gyroscope (green) drifts away.
                     </p>
                     <figure>
-                        <img src="./images/lab2/fig15.png" alt="Pitch & Roll: accelerometer vs gyroscope vs complementary filter">
-                        <figcaption><strong>Figure 15.</strong> Pitch comparison: raw accelerometer (blue), gyroscope (green, drifting), and complementary filter (red, stable). The complementary filter resists drift while following the true angle.</figcaption>
+                        <img src="./images/lab2/fig15.png" alt="Pitch and Roll: accelerometer vs gyroscope vs complementary filter">
+                        <figcaption><strong>Figure 15.</strong> Pitch (top) and roll (bottom) comparison: raw accelerometer (blue, stable), gyroscope (green, drifting ~7° and ~3.5° respectively), and complementary filter (red, anchored to true angle). The filter successfully combines gyro responsiveness with accelerometer long-term stability.</figcaption>
                     </figure>
                    
                     <p>
