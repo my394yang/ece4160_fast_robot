@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 2 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 2: IMU</h1>
+            </header>
+
+            <!-- ============================================================ -->
+            <!--  OBJECTIVE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The purpose of this lab is to add the IMU to the robot, run the Artemis and sensors from a battery,
+                        and record a stunt on the RC robot. This involves setting up the ICM-20948 IMU, processing
+                        accelerometer and gyroscope data, implementing a low-pass filter, and implementing a complementary
+                        filter for stable angle estimation.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  PRELAB                                                       -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="prelab">
+                <h2 class="section-title">Prelab</h2>
+                <div class="section-content">
+                    <p>
+                        Prior to lab, I read about the IMU we would be putting on our robot, the
+                        <a href="https://cdn.sparkfun.com/assets/7/f/e/c/d/DS-000189-ICM-20948-v1.3.pdf" target="_blank">ICM-20948</a>,
+                        and the <a href="https://www.sparkfun.com/products/15335" target="_blank">SparkFun breakout board</a>.
+                        I also skimmed the full lab instructions to prepare for the lab session.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  SETUP THE IMU                                                -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="setup_imu">
+                <h2 class="section-title">Setup the IMU</h2>
+                <div class="section-content">
+                    <p>
+                        Coming into lab, I exchanged my two puffy 650 mAh batteries (which had been sitting on the shelves
+                        too long) for a 750 mAh battery and put it on charge.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig1.png" alt="750mAh battery charging">
+                        <figcaption><strong>Figure 1.</strong> 750 mAh battery charging before the lab.</figcaption>
+                    </figure>
+                    <p>
+                        I installed the "SparkFun 9DOF IMU Breakout_ICM 20948_Arduino Library" from the Arduino Library
+                        Manager and connected the IMU to the Artemis board using the rainbow-colored QWIIC connectors.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig2.png" alt="Artemis board connected to IMU via QWIIC connector">
+                        <figcaption><strong>Figure 2.</strong> Artemis board connected to the ICM-20948 IMU via QWIIC connector.</figcaption>
+                    </figure>
+
+                    <h3>AD0_VAL</h3>
+                    <p>
+                        I ran the SparkFun ICM-20948 Example1_Basics. The demo code defines <code>AD0_VAL</code> as 1.
+                        <code>AD0_VAL</code> represents the value of the last bit of the I2C address. The AD0 pin on the
+                        ICM-20948 breakout board acts as an address select, allowing two IMUs to share the same I2C bus
+                        without conflict. According to the datasheet, the LSB of the 7-bit I2C address is set by the logic
+                        level on pin AD0: address <code>b1101000</code> (AD0 = 0, logic low) or <code>b1101001</code>
+                        (AD0 = 1, logic high). The code correctly initializes with <code>AD0_VAL = 1</code>, meaning the
+                        library communicates at address 0x69 (b1101001), with the AD0 pin on the breakout board pulled
+                        high by an onboard pull-up resistor.
+                    </p>
+
+                    <h3>Sensor Values: Rotate, Flip, Accelerate</h3>
+                    <p>
+                        I changed <code>delay(30)</code> to <code>delay(300)</code> to better observe changing values in
+                        the Serial Monitor. As I rotate, flip, and accelerate the board, the accelerometer and gyroscope
+                        data values change accordingly.
+                    </p>
+                    <p>
+                        When the IMU is placed flat and stationary on the table, the X and Y accelerometer values hover
+                        near 0 mg while Z hovers near 1000 mg (~1g). For instance, a typical reading shows X = 21 mg,
+                        Y = −17.58 mg, Z = 1026.37 mg, which converts to X = 0.021g, Y = −0.018g, Z = 1.026g. This is
+                        expected because gravity acts straight down, so only the Z-axis sees it. The small offsets are
+                        sensor noise and minor calibration bias. With the IMU stationary, gyroscope readings are all
+                        close to zero (e.g., 1.22 °/s X, 0.80 °/s Y, 0.96 °/s Z).
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig3.png" alt="Serial monitor output: IMU flat and stationary">
+                        <figcaption><strong>Figure 3.</strong> Serial Monitor output when the IMU is flat and stationary. Accelerometer Z ≈ 1g; gyroscope values ≈ 0.</figcaption>
+                    </figure>
+                    <p>
+                        When I rotate the IMU, whichever axis aligns with the rotation has a significantly larger
+                        gyroscope value than the other two. For example, rotating around the pitch axis (Y) produces
+                        large gyroscope Y readings and large varying accelerometer values because gravity's projection
+                        shifts across axes as the board is flipped.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig4.png" alt="Serial monitor output: IMU rotated around pitch">
+                        <figcaption><strong>Figure 4.</strong> Serial Monitor output while rotating the IMU around the pitch axis. Gyroscope Y is largest.</figcaption>
+                    </figure>
+                    <p>
+                        When I push the IMU linearly back and forth in the X direction, the X accelerometer value shifts
+                        from positive to negative to positive, reflecting the linear acceleration from my hand. The Y
+                        accelerometer is small (I moved primarily along X), and Z stays near 1g. Because I am doing
+                        linear, not rotational, motion, the gyroscope readings remain very small.
+                    </p>
+
+                    <!-- VIDEO PLACEHOLDER -->
+                    <div class="video-container">
+                        <iframe width="560" height="315" src="https://www.youtube.com/embed/Vc375WOK7Fs?si=dx9RYkF7yafUsZLo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                    </div>
+
+                    <h3>LED Startup Indication</h3>
+                    <p>
+                        At startup, an LED blinks slowly 3 times as a visual indication that the board is running.
+                        This is implemented in <code>setup()</code> using <code>digitalWrite</code> and
+                        <code>delay(2000)</code> to create three slow on-off cycles.
+                    </p>
+                    <pre><code>// blink LED 3 times slowly on start-up
+digitalWrite(LED_BUILTIN, HIGH);
+delay(2000);
+digitalWrite(LED_BUILTIN, LOW);
+delay(2000);
+digitalWrite(LED_BUILTIN, HIGH);
+delay(2000);
+digitalWrite(LED_BUILTIN, LOW);
+delay(2000);
+digitalWrite(LED_BUILTIN, HIGH);
+delay(2000);
+digitalWrite(LED_BUILTIN, LOW);
+delay(2000);</code></pre>
+
+                    <div class="video-container">
+                        <iframe width="315" height="560" src="https://www.youtube.com/embed/dgoEWavTTII" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  ACCELEROMETER                                                -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="accelerometer">
+                <h2 class="section-title">Accelerometer</h2>
+                <div class="section-content">
+
+                    <h3>Pitch and Roll Equations</h3>
+                    <p>
+                        Pitch and roll are computed from the raw accelerometer X, Y, Z readings using <code>atan2</code>
+                        and converted from radians to degrees:
+                    </p>
+                    <pre><code>void updateAccelPitchRoll() {
+  float a_x = myICM.accX();
+  float a_y = myICM.accY();
+  float a_z = myICM.accZ();
+  // atan2 returns radians, convert to degrees
+  accel_roll  = atan2(a_y, a_z) * 180.0 / M_PI;
+  accel_pitch = atan2(a_x, a_z) * 180.0 / M_PI;
+}</code></pre>
+                    <p>
+                        This requires including the <code>math.h</code> library for <code>atan2</code> and <code>M_PI</code>.
+                    </p>
+
+                    <h3>Output at {−90°, 0°, 90°} for Pitch and Roll</h3>
+                    <p>
+                        I used the surface and edges of my table as guides to achieve consistent 90° tilts.
+                        The pitch and roll angles were displayed on the Serial Monitor and simultaneously streamed
+                        to Python over BLE.
+                    </p>
+
+                    <div class="video-container">
+                        <iframe width="560" height="315" src="https://www.youtube.com/embed/Vc375WOK7Fs?si=dx9RYkF7yafUsZLo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                    </div>
+
+                    <p>
+                        Figure 5 shows the pitch and roll when the IMU is placed flat on the table (expected: pitch ≈ 0°,
+                        roll ≈ 0°). The measured pitch is ~0.11° and roll is ~−0.95°, which are both very close to 0°.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig5.png" alt="Accelerometer pitch and roll, IMU flat (0 degrees)">
+                        <figcaption><strong>Figure 5.</strong> Accelerometer pitch (~0.11°) and roll (~−0.95°) when the IMU is placed flat. Expected: 0°, 0°.</figcaption>
+                    </figure>
+
+                    <p>
+                        Figure 6 shows the pitch and roll when the IMU is propped on the right edge of my desk
+                        (expected: pitch ≈ 0°, roll ≈ −90°). Roll reads ~−0.95°, which is unexpectedly not close to
+                        −90°. This is because the IMU was placed on the edge along an axis that changed roll rather
+                        than pitch, and the physical alignment was not perfectly perpendicular. This highlights the
+                        difficulty of achieving exactly 90° by hand.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig6.png" alt="Accelerometer pitch and roll, IMU on desk edge">
+                        <figcaption><strong>Figure 6.</strong> Accelerometer pitch and roll when the IMU is placed on the desk edge. Expected: pitch ≈ 0°, roll ≈ −90°.</figcaption>
+                    </figure>
+
+                    <p>
+                        Figure 7 shows pitch and roll at +90°. Roll reads ~88.2° and pitch reads ~45.9°, showing that
+                        the IMU was not placed at a pure single-axis rotation — it had compound tilt. The table edge
+                        provided a reasonable but imperfect guide.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig7.png" alt="Accelerometer pitch and roll, IMU at +90 degree edge">
+                        <figcaption><strong>Figure 7.</strong> Accelerometer pitch (~45.9°) and roll (~88.2°) at +90° edge position.</figcaption>
+                    </figure>
+
+                    <h3>Plotting in Python with BLE</h3>
+                    <p>
+                        To better process data, I established a BLE connection between the Artemis (Arduino IDE)
+                        and my laptop (Jupyter Lab). I combined the BLE communication code into <code>lab2_imu.ino</code>,
+                        adding the required libraries, UUIDs, and case statements for commands including
+                        <code>GET_ACCEL_DATA</code>, <code>GET_ACCEL_NOISE</code>, <code>GET_GYRO_DATA</code>, and
+                        <code>GET_COMPL_DATA</code>. In Python, I wrote notification handlers that parse the
+                        comma-separated BLE strings and plot pitch and roll on graphs with time (seconds) on the x-axis.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig8.png" alt="Compilation error when combining BLE and IMU code">
+                        <figcaption><strong>Figure 8.</strong> Compilation error encountered when first combining <code>ble_arduino.ino</code> and <code>lab2_imu.ino</code>. Resolved by copying header files into the <code>lab2_imu</code> sketch folder.</figcaption>
+                    </figure>
+
+                    <h3>Accelerometer Accuracy and Two-Point Calibration</h3>
+                    <p>
+                        To assess accuracy, I performed a two-point calibration by measuring pitch and roll at +90°
+                        and −90°. The mean values at each orientation were collected using <code>np.mean()</code> in Python:
+                    </p>
+                    <ul>
+                        <li>At +90°: mean pitch = 45.881°, mean roll = 88.197°</li>
+                        <li>At −90°: mean pitch = −2.385°, mean roll = −88.026°</li>
+                    </ul>
+                    <p>
+                        A note on the calibration process: every time I aligned the IMU next to my desk's edge for a
+                        more accurate 90°, the IMU would disconnect due to physical contact with the edge, which was
+                        frustrating and limited calibration accuracy.
+                    </p>
+                    <p>
+                        The scale and offset were computed as follows:
+                    </p>
+                    <pre><code># take the mean at +90°
+mean_pitch_90_measured  = np.mean(accel_pitches)
+mean_roll_90_measured   = np.mean(accel_rolls)
+
+# take the mean at -90°
+mean_pitch_neg_90_measured = np.mean(accel_pitches)
+mean_roll_neg_90_measured  = np.mean(accel_rolls)
+
+# compute scale and offset
+pitch_scale  = 180.0 / (mean_pitch_90_measured - mean_pitch_neg_90_measured)
+pitch_offset = 90.0  - pitch_scale * mean_pitch_90_measured
+roll_scale   = 180.0 / (mean_roll_90_measured  - mean_roll_neg_90_measured)
+roll_offset  = 90.0  - roll_scale  * mean_roll_90_measured</code></pre>
+                    <p>
+                        The resulting conversion factors are:
+                    </p>
+                    <ul>
+                        <li>Pitch scale: <strong>1.0224</strong>, Pitch offset: <strong>−0.9508°</strong></li>
+                        <li>Roll scale: <strong>0.9965</strong>, Roll offset: <strong>−0.8819°</strong></li>
+                    </ul>
+                    <p>
+                        Pitch scale is ~1.02 (2% off from ideal) and roll scale is ~1.00 (very close to ideal),
+                        with small offsets. This indicates the ICM-20948 accelerometer is quite accurate and calibration
+                        provides only a small correction.
+                    </p>
+
+                    <h3>Noise in the Frequency Spectrum</h3>
+                    <p>
+                        To analyze accelerometer noise, I implemented a <code>GET_ACCEL_NOISE</code> BLE command that
+                        records 100 samples at ~200 Hz (5 ms delay between samples) into arrays on the Artemis, then
+                        sends them all over BLE. This store-then-send approach ensures consistent sampling without BLE
+                        transmission overhead disturbing the timing.
+                    </p>
+                    <pre><code>// Arduino: GET_ACCEL_NOISE — store first, then send
+case GET_ACCEL_NOISE:
+  for (int i = 0; i &lt; ARRAY_SIZE; i++) {
+    if (myICM.dataReady()) {
+      myICM.getAGMT();
+      updateAccelPitchRoll();
+      accel_pitch_arr[i] = accel_pitch;
+      accel_roll_arr[i]  = accel_roll;
+      arr[i] = millis();
+    }
+    delay(5); // 5ms = ~200Hz
+  }
+  for (int i = 0; i &lt; ARRAY_SIZE; i++) {
+    tx_estring_value.clear();
+    tx_estring_value.append("Accel_pitch:"); tx_estring_value.append(accel_pitch_arr[i]);
+    tx_estring_value.append(",Accel_roll:"); tx_estring_value.append(accel_roll_arr[i]);
+    tx_estring_value.append(",T:");          tx_estring_value.append((int)arr[i]);
+    tx_characteristic_string.writeValue(tx_estring_value.c_str());
+    delay(10);
+  }</code></pre>
+                    <pre><code># Python: collect noise data
+noise_timestamps = []; noise_pitches = []; noise_rolls = []
+
+def accel_noise_notif_handler(uuid, byte_array):
+    s = ble.bytearray_to_string(byte_array)
+    s_split = dict(item.split(":") for item in s.split(","))
+    noise_pitches.append(float(s_split["Accel_pitch"]))
+    noise_rolls.append(float(s_split["Accel_roll"]))
+    noise_timestamps.append(int(s_split["T"]))
+
+noise_timestamps.clear(); noise_pitches.clear(); noise_rolls.clear()
+ble.start_notify(ble.uuid['RX_STRING'], accel_noise_notif_handler)
+ble.send_command(CMD_lab2.GET_ACCEL_NOISE, "")
+time.sleep(4)
+ble.stop_notify(ble.uuid['RX_STRING'])
+print(f"Collected {len(noise_timestamps)}/100 samples")</code></pre>
+                    <p>
+                        Figure 9 shows the noise in the time domain. With the IMU flat and stationary, pitch noise is
+                        within roughly ±1° and roll noise is within ±1.5°, which is characteristic of the ICM-20948's
+                        built-in digital low-pass filter already doing some hardware-level filtering.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig9.png" alt="Accelerometer noise in time domain">
+                        <figcaption><strong>Figure 9.</strong> Accelerometer pitch (red) and roll (blue) noise in the time domain. Sampling rate: ~153 Hz. Noise is roughly ±1° pitch, ±1.5° roll.</figcaption>
+                    </figure>
+                    <pre><code># Python: FFT using scipy
+from scipy.fftpack import fft
+
+def plot_fft(timestamps_ms, signal, color, label):
+    N  = len(signal)
+    t  = np.array(timestamps_ms)
+    dt = np.mean(np.diff(t)) / 1000.0   # ms -> seconds
+    fs = 1.0 / dt
+    print(f"{label} sampling rate: {fs:.1f} Hz")
+
+    signal = np.array(signal) - np.mean(signal)  # remove DC offset
+    freq_data = fft(signal)
+    frequency = np.linspace(0, fs/2, N//2)
+    y = 2/N * np.abs(freq_data[0:N//2])
+
+    plt.figure()
+    plt.plot(frequency, y, color=color)
+    plt.xlabel("Frequency (Hz)"); plt.ylabel("Amplitude")
+    plt.title(f"FFT - Accelerometer {label}")
+    plt.grid(True); plt.show()
+    return frequency, y
+
+pitch_freq, pitch_mag = plot_fft(noise_timestamps, noise_pitches, "red",  "Pitch_noise")
+roll_freq,  roll_mag  = plot_fft(noise_timestamps, noise_rolls,   "blue", "Roll_noise")</code></pre>
+                    <p>
+                        Figure 10 shows the FFT of the pitch and roll noise using <code>scipy.fftpack.fft</code>.
+                        The spectrum is relatively flat across all frequencies from 0 to 76 Hz (Nyquist limit at
+                        153 Hz sampling), with no single dominant spike — characteristic of broadband white noise.
+                        A peak near 0 Hz is the DC component (the mean angle), which was subtracted before computing
+                        the FFT. A spike at approximately 55 Hz is visible in the pitch spectrum; this may correspond
+                        to table vibration, electrical interference, or a spectral artifact from the limited 100-sample
+                        window.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig10.png" alt="FFT of accelerometer pitch and roll noise">
+                        <figcaption><strong>Figure 10.</strong> FFT of accelerometer pitch (red) and roll (blue) noise. Sampling rate: 153.3 Hz. The spectrum is broadly flat, indicating white noise with no dominant vibration frequency.</figcaption>
+                    </figure>
+
+                    <h3>Low-Pass Filter Cutoff Frequency</h3>
+                    <p>
+                        Since the FFT shows broadband noise distributed across all frequencies with no clear knee point,
+                        the cutoff frequency must be chosen based on the expected signal content rather than a visible
+                        spectral transition. Real robot motion (tilting, turning) occurs at frequencies below approximately
+                        5 Hz, while noise occupies the full spectrum up to Nyquist. A cutoff frequency of
+                        <strong>f<sub>c</sub> = 5 Hz</strong> was chosen to pass the meaningful motion signal and reject
+                        the higher-frequency noise floor.
+                    </p>
+                    <p>
+                        The corresponding alpha (accel_gain) for the low-pass filter at 153 Hz sampling (dt = 1/153 s):
+                    </p>
+                    <pre><code>alpha = (2π × fc × dt) / (2π × fc × dt + 1)
+      = (2π × 5 × 0.0065) / (2π × 5 × 0.0065 + 1)
+      ≈ 0.17</code></pre>
+                    <p>
+                        A lower cutoff (smaller alpha) produces a smoother output with more lag, which is preferable
+                        for the IMU use case since we want stable angle estimates for the PID controller rather than
+                        raw noisy readings. A higher cutoff (larger alpha) passes more noise but is more responsive.
+                    </p>
+
+                    <h3>Low-Pass Filter Implementation</h3>
+                    <p>
+                        The low-pass filter is implemented on the Artemis in the <code>GET_ACCEL_DATA</code> case:
+                    </p>
+                    <pre><code>// Arduino: GET_ACCEL_DATA with LPF
+case GET_ACCEL_DATA:
+  updateAccelPitchRoll();
+  // lpf: angle_lpf = alpha*angle + (1-alpha)*angle_lpf_prev
+  accel_roll_lpf  = accel_gain * accel_roll  + gyro_gain * accel_roll_lpf;
+  accel_pitch_lpf = accel_gain * accel_pitch + gyro_gain * accel_pitch_lpf;
+
+  tx_estring_value.clear();
+  tx_estring_value.append("Accel_pitch:");     tx_estring_value.append(accel_pitch);
+  tx_estring_value.append(",Accel_roll:");     tx_estring_value.append(accel_roll);
+  tx_estring_value.append(",Accel_roll_lpf:"); tx_estring_value.append(accel_roll_lpf);
+  tx_estring_value.append(",Accel_pitch_lpf:"); tx_estring_value.append(accel_pitch_lpf);
+  tx_estring_value.append(",T:");              tx_estring_value.append((int)millis());
+  tx_characteristic_string.writeValue(tx_estring_value.c_str());
+  break;</code></pre>
+                    <p>
+                        where <code>accel_gain = 0.17</code> (alpha) and <code>gyro_gain = 1 - accel_gain = 0.83</code>.
+                        The LPF globals are initialized at the end of <code>setup()</code> to the first IMU reading
+                        to avoid the exponential convergence artifact from zero initialization:
+                    </p>
+                    <pre><code>// Arduino: setup() — initialize LPF to first real reading
+myICM.getAGMT();
+updateAccelPitchRoll();
+accel_roll_lpf  = accel_roll;
+accel_pitch_lpf = accel_pitch;</code></pre>
+                    <pre><code># Python: collect and plot accel raw vs LPF
+timestamps = []; accel_pitches = []; accel_rolls = []
+accel_pitches_lpf = []; accel_rolls_lpf = []
+
+def accel_reading_notif_handler(uuid, byte_array):
+    s = ble.bytearray_to_string(byte_array)
+    parts = dict(item.split(":") for item in s.split(","))
+    accel_pitches.append(float(parts["Accel_pitch"]))
+    accel_rolls.append(float(parts["Accel_roll"]))
+    accel_pitches_lpf.append(float(parts["Accel_pitch_lpf"]))
+    accel_rolls_lpf.append(float(parts["Accel_roll_lpf"]))
+    timestamps.append(int(parts["T"]))
+
+timestamps.clear(); accel_pitches.clear(); accel_rolls.clear()
+accel_pitches_lpf.clear(); accel_rolls_lpf.clear()
+ble.start_notify(ble.uuid['RX_STRING'], accel_reading_notif_handler)
+
+t_start = time.time()
+while time.time() - t_start &lt; 5:
+    ble.send_command(CMD_lab2.GET_ACCEL_DATA, "")
+    time.sleep(0.05)
+print(f"Collected {len(timestamps)} samples in 5 seconds")
+ble.stop_notify(ble.uuid['RX_STRING'])</code></pre>
+                    <figure>
+                        <img src="./images/lab2/fig11.png" alt="Accelerometer pitch raw, pitch vs LPF">
+                        <figcaption><strong>Figure 11.</strong> Accelerometer pitch: raw (blue) vs. low-pass filtered (orange). With the IMU stationary, both lines overlap closely.</figcaption>
+                    </figure>
+                    
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  GYROSCOPE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="gyroscope">
+                <h2 class="section-title">Gyroscope</h2>
+                <div class="section-content">
+
+                    <h3>Pitch, Roll, and Yaw from Gyroscope</h3>
+                    <p>
+                        Gyroscope pitch, roll, and yaw are computed by integrating the angular velocity readings
+                        over time using the following equations:
+                    </p>
+                    <pre><code>gyro_roll  += gyrX() * dt;
+gyro_pitch += gyrY() * dt;
+gyro_yaw   += gyrZ() * dt;</code></pre>
+                    <p>
+                        where <code>dt</code> is the actual elapsed time since the last measurement, computed
+                        dynamically using <code>millis()</code>:
+                    </p>
+                    <pre><code>// Arduino: dynamic dt gyroscope integration
+void updateGyroRollPitchYaw() {
+  unsigned long now = millis();
+  dt = (now - last_time) / 1000.0;  // ms -> seconds
+  last_time = now;
+  gyro_roll  += myICM.gyrX() * dt;
+  gyro_pitch += myICM.gyrY() * dt;
+  gyro_yaw   += myICM.gyrZ() * dt;
+}</code></pre>
+                    <p>
+                        Originally, <code>dt</code> was hardcoded as 0.001 s, which was incorrect because the main
+                        loop runs at ~300 ms (not 1 ms). Using dynamic <code>dt</code> based on actual timestamps
+                        produces accurate angle integration.
+                    </p>
+
+                    <pre><code># Python: collect gyroscope data
+gyro_timestamps = []; gyro_pitches = []; gyro_rolls = []; gyro_yaws = []
+
+def gyro_reading_notif_handler(uuid, byte_array):
+    s = ble.bytearray_to_string(byte_array)
+    parts = dict(item.split(":") for item in s.split(","))
+    gyro_pitches.append(float(parts["Gyro_pitch"]))
+    gyro_rolls.append(float(parts["Gyro_roll"]))
+    gyro_yaws.append(float(parts["Gyro_yaw"]))
+    gyro_timestamps.append(int(parts["T"]))
+
+gyro_timestamps.clear(); gyro_pitches.clear()
+gyro_rolls.clear(); gyro_yaws.clear()
+
+ble.start_notify(ble.uuid['RX_STRING'], gyro_reading_notif_handler)
+DURATION = 5
+SAMPLE_DELAY = 0.05  # change to adjust sampling frequency
+t_start = time.time()
+while time.time() - t_start &lt; DURATION:
+    ble.send_command(CMD_lab2.GET_GYRO_DATA, "")
+    time.sleep(SAMPLE_DELAY)
+print(f"Collected {len(gyro_timestamps)} samples in {DURATION}s")</code></pre>
+
+                    <h3>Comparison to Accelerometer and Filtered Response</h3>
+                    <p>
+                        The three sensing approaches differ in the following key ways:
+                    </p>
+                    <ul>
+                        <li>
+                            <strong>Accelerometer (raw):</strong> Noisy but accurate in the long run. The mean of the
+                            noise has a zero Gaussian offset, meaning it returns to the correct absolute angle over time.
+                            However, the accelerometer cannot measure yaw because yaw is rotation around the vertical
+                            (gravity) axis — gravity has no component that changes with yaw rotation, so atan2 cannot
+                            recover it.
+                        </li>
+                        <li>
+                            <strong>Gyroscope:</strong> Smooth and responsive, but suffers from drift — integrating
+                            even a tiny bias in angular velocity causes the angle to slowly wander over time even when
+                            the IMU is stationary, as shown in Figures 13 and 14. The gyroscope can measure yaw, but
+                            drift affects yaw too.
+                        </li>
+                        <li>
+                            <strong>Low-pass filtered accelerometer:</strong> Smoother than raw accelerometer with
+                            reduced high-frequency noise, but still cannot measure yaw and still contains the
+                            accelerometer's susceptibility to linear vibrations.
+                        </li>
+                    </ul>
+              
+
+                    <h3>Effect of Sampling Frequency on Gyroscope Accuracy</h3>
+                    <p>
+                        Sampling frequency directly affects the accuracy of gyroscope angle integration. With a slower
+                        sampling rate (larger <code>delay()</code>), each integration step is larger, meaning even a small
+                        gyroscope bias accumulates into a larger error per step. Figure 14 shows gyroscope data collected
+                        at <code>sample_delay = 0.05 s</code> (approximately 20 Hz) — the drift is steeper and more
+                        visible than at higher sampling rates (e.g., <code>delay(10)</code> at ~100 Hz). At faster
+                        sampling, each <code>dt</code> is smaller so bias accumulates more slowly.
+                    </p>
+                    <p>
+                        Yes — adjusting sampling frequency here means changing <code>dt</code> (the time between
+                        measurements), which is controlled by the <code>delay()</code> in the main loop. A smaller
+                        delay means more frequent updates, smaller dt, and less drift accumulation.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig14.png" alt="Gyroscope pitch roll yaw at 20Hz sampling">
+                        <figcaption><strong>Figure 14.</strong> Gyroscope pitch, roll, and yaw at sample_delay = 0.05 s (~20 Hz). Drift is visible as a linear slope even with the IMU stationary.</figcaption>
+                    </figure>
+
+                    <h3>Complementary Filter</h3>
+                    <p>
+                        The complementary filter combines the gyroscope (short-term accuracy, no vibration sensitivity)
+                        with the accelerometer (long-term accuracy, no drift) to produce an estimate that is both
+                        stable and accurate:
+                    </p>
+                    <pre><code>compl_roll  = gyro_gain  * (compl_roll  + gyrX() * dt) + accel_gain * accel_roll;
+compl_pitch = gyro_gain  * (compl_pitch + gyrY() * dt) + accel_gain * accel_pitch;
+compl_yaw   = gyro_yaw;  // no accelerometer correction for yaw</code></pre>
+                    <pre><code>// Arduino: complementary filter
+void updateComplRollPitchYaw() {
+  compl_roll  = gyro_gain * (compl_roll  + myICM.gyrX() * dt) + accel_gain * accel_roll;
+  compl_pitch = gyro_gain * (compl_pitch + myICM.gyrY() * dt) + accel_gain * accel_pitch;
+  compl_yaw   = gyro_yaw; // no accelerometer correction for yaw
+}
+
+// globals
+float accel_gain = 0.1; // 10% accel, 90% gyro
+float gyro_gain  = 1.0 - accel_gain;</code></pre>
+                    <pre><code># Python: collect complementary filter data and overlay plot
+compl_timestamps = []; compl_pitches = []; compl_rolls = []; compl_yaws = []
+
+def compl_notif_handler(uuid, byte_array):
+    s = ble.bytearray_to_string(byte_array)
+    parts = dict(item.split(":") for item in s.split(","))
+    compl_pitches.append(float(parts["Compl_pitch"]))
+    compl_rolls.append(float(parts["Compl_roll"]))
+    compl_yaws.append(float(parts["Compl_yaw"]))
+    compl_timestamps.append(int(parts["T"]))
+
+compl_timestamps.clear(); compl_pitches.clear()
+compl_rolls.clear(); compl_yaws.clear()
+
+ble.start_notify(ble.uuid['RX_STRING'], compl_notif_handler)
+t_start = time.time()
+while time.time() - t_start &lt; 5:
+    ble.send_command(CMD_lab2.GET_COMPL_DATA, "")
+    time.sleep(0.05)
+
+# overlay accel vs gyro vs complementary
+t_c = (np.array(compl_timestamps) - compl_timestamps[0]) / 1000.0
+t_a = (np.array(timestamps)       - timestamps[0])       / 1000.0
+t_g = (np.array(gyro_timestamps)  - gyro_timestamps[0])  / 1000.0
+
+plt.figure()
+plt.plot(t_a, accel_pitches, color='blue',  alpha=0.5, label='Accel (raw)')
+plt.plot(t_g, gyro_pitches,  color='green', alpha=0.5, label='Gyro')
+plt.plot(t_c, compl_pitches, color='red',   linewidth=2, label='Complementary')
+plt.xlabel("Time (s)"); plt.ylabel("Pitch (°)")
+plt.title("Pitch: Accel vs Gyro vs Complementary Filter")
+plt.legend(); plt.grid(True); plt.show()</code></pre>
+                    <p>
+                        With <code>accel_gain = 0.5</code> and <code>gyro_gain = 0.5</code>, the filter heavily weights
+                        the accelerometer and the complementary output closely tracks the raw accelerometer value.
+                        Reducing <code>accel_gain</code> to 0.1 (trusting the gyroscope 90%) makes the complementary
+                        filter more responsive while still receiving long-term correction from the accelerometer,
+                        as seen in Figure 15 where the complementary filter (red) stays close to the accel (blue)
+                        while the gyroscope (green) drifts away.
+                    </p>
+                    <figure>
+                        <img src="./images/lab2/fig15.png" alt="Pitch & Roll: accelerometer vs gyroscope vs complementary filter">
+                        <figcaption><strong>Figure 15.</strong> Pitch comparison: raw accelerometer (blue), gyroscope (green, drifting), and complementary filter (red, stable). The complementary filter resists drift while following the true angle.</figcaption>
+                    </figure>
+                   
+                    <p>
+                        The complementary filter demonstrates its value clearly: the gyroscope drifts several degrees
+                        over 5 seconds while the complementary filter remains anchored to the true angle. The filter
+                        is also not susceptible to quick vibrations because the gyroscope component smooths out the
+                        high-frequency accelerometer spikes, and the accelerometer component corrects the long-term
+                        gyroscope drift.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  SAMPLE DATA                                                  -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="sample_data">
+                <h2 class="section-title">Sample Data</h2>
+                <div class="section-content">
+
+                    <h3>Speeding Up the Main Loop</h3>
+                    <p>
+                        To maximize sampling speed, I made the following changes to the main loop:
+                    </p>
+                    <pre><code>// Arduino: non-blocking main loop
+void loop() {
+  BLEDevice central = BLE.central();
+  if (central) {
+    while (central.connected()) {
+      write_data();
+      read_data();  // handles BLE commands
+    }
+  }
+  // non-blocking IMU check — no delay(), no Serial.print()
+  if (myICM.dataReady()) {
+    myICM.getAGMT();
+    updateAccelPitchRoll();
+    updateGyroRollPitchYaw();  // must be called first — updates dt
+    updateComplRollPitchYaw(); // depends on dt from above
+    delay(10); // ~100Hz
+  }
+}</code></pre>
+                    <ul>
+                        <li>
+                            Removed <code>delay(300)</code> from the main loop and replaced it with a non-blocking
+                            <code>if (myICM.dataReady())</code> check. This means the loop does not wait for IMU data
+                            to be ready — it simply checks and moves on if data is not yet available.
+                        </li>
+                        <li>
+                            Removed all <code>Serial.print</code> statements, which are a significant source of delays
+                            due to UART transmission overhead.
+                        </li>
+                        <li>
+                            Removed debugging delays.
+                        </li>
+                    </ul>
+                    <p>
+                        The ICM-20948's default output data rate (ODR) is approximately 1125 Hz / (1 + SMPLRT_DIV).
+                        With default settings, the IMU produces new values at roughly 100–200 Hz. The Artemis main loop
+                        without delays runs much faster than this, so the loop will frequently find
+                        <code>dataReady() == false</code> and skip the IMU block — meaning the loop runs faster than
+                        the IMU produces values. This is the correct behavior: the loop polls rapidly and processes
+                        data only when new data is available.
+                    </p>
+
+                    <h3>Data Storage Design</h3>
+                    <p>
+                        I use <strong>separate arrays</strong> for accelerometer and gyroscope data rather than one
+                        large interleaved array. This is because the two sensors may be sampled at different effective
+                        rates (the IMU produces both at the same time, but future labs may require streaming only one),
+                        and separate arrays make the code easier to read, debug, and extend. A shared timestamp array
+                        is used for both.
+                    </p>
+                    <p>
+                        I use <strong>floats</strong> (4 bytes each) for angle data. Double precision is unnecessary
+                        for angle measurements in this application (float gives ~7 decimal digits of precision, more
+                        than sufficient). Integer storage would lose the fractional part of the angle. Strings consume
+                        significantly more memory and require conversion overhead.
+                    </p>
+                    <p>
+                        The Artemis has 384 kB of RAM. Accounting for program code, BLE stack, and other variables,
+                        a conservative estimate of ~200 kB is available for data arrays. With 3 float arrays (pitch,
+                        roll, yaw) plus 1 unsigned long timestamp array, each sample costs 3 × 4 + 4 = 16 bytes.
+                        This allows approximately 200,000 / 16 ≈ 12,500 samples. At a sampling rate of ~150 Hz,
+                        that corresponds to roughly <strong>83 seconds</strong> of data storage.
+                    </p>
+
+                    <h3>5 Seconds of IMU Data over Bluetooth</h3>
+                    <p>
+                        Using the <code>GET_ACCEL_DATA</code> and <code>GET_GYRO_DATA</code> BLE commands with a
+                        Python collection loop running for 5 seconds, the board successfully captures and transmits
+                        time-stamped IMU data over Bluetooth. Figure 17 demonstrates 5 seconds of accelerometer data
+                        collected at approximately 20 Hz via BLE.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  RECORD A STUNT                                               -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="stunt">
+                <h2 class="section-title">Recording a Stunt</h2>
+                <div class="section-content">
+                    <p>
+                        I mounted the 750 mAh battery in the RC car (red to red, black to black) and installed
+                        2 AA batteries in the remote controller. I spent time driving the car in the hallway to
+                        get a feel for its behavior.
+                    </p>
+                    <p>
+                        Observations from driving the RC car:
+                    </p>
+                    <ul>
+                        <li>
+                            The car is fast — it accelerates very quickly from a stop and reaches a high top speed
+                            in a short distance. This will produce significant IMU acceleration spikes when the motors
+                            are engaged.
+                        </li>
+                        <li>
+                            Turning is sharp. At full throttle, the car can spin nearly in place. Sharp turns also
+                            produce visible roll on the chassis.
+                        </li>
+                        <li>
+                            The car can drive forward and backward with similar speed. Rapid direction changes
+                            (forward to reverse) cause the car to jerk abruptly.
+                        </li>
+                        <li>
+                            Motor vibrations are noticeable when the car runs nearby — this confirms that the
+                            accelerometer noise analysis is important for future control loops, as the motors
+                            will induce high-frequency vibrations into the IMU signal.
+                        </li>
+                    </ul>
+
+                    <div class="video-container">
+                        <iframe width="560" height="315" src="https://www.youtube.com/embed/3fi_ZYSRnM8?si=6KKI1uN7A0BPXgwY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://cdn.sparkfun.com/assets/7/f/e/c/d/DS-000189-ICM-20948-v1.3.pdf" target="_blank">ICM-20948 Datasheet</a></li>
+                        <li><a href="https://www.alphabold.com/fourier-transform-in-python-vibration-analysis/" target="_blank">Fourier Transform in Python – AlphaBOLD</a></li>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2026/labs/Lab2.html" target="_blank">Lab 2 Instructions – Fast Robots @ Cornell</a></li>
+                        <li>I didn't reference past student's page for this lab.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="/cdn-cgi/l/email-protection#3e53470d070a7e5d514c505b5252105b5a4b"><span class="__cf_email__" data-cfemail="c6abb
