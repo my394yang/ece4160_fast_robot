@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 3 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 3: Time of Flight Sensors</h1>
+            </header>
+
+            <!-- ============================================================ -->
+            <!--  OBJECTIVE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The purpose of this lab is to equip the robot with two VL53L1X time-of-flight (ToF)
+                        distance sensors. The faster the robot can sample and the more it can trust a sensor
+                        reading, the faster it is able to drive. This lab covers sensor characterization (range,
+                        accuracy, repeatability, ranging time), dual-sensor setup over I2C, non-blocking data
+                        collection, and streaming time-stamped ToF and IMU data over Bluetooth to a laptop.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  PRELAB                                                       -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="prelab">
+                <h2 class="section-title">Prelab</h2>
+                <div class="section-content">
+                    <p>
+                        Prior to lab, I skimmed the
+                        <a href="https://cdn.sparkfun.com/assets/e/1/8/4/e/VL53L1X_API.pdf" target="_blank">VL53L1X API manual</a>
+                        and the <a href="https://cdn.sparkfun.com/assets/8/9/9/a/6/VL53L0X_DS.pdf" target="_blank">datasheet</a>
+                        to understand the sensor's I2C interface, addressing, and ranging modes.
+                    </p>
+
+                    <h3>I2C Address</h3>
+                    <p>
+                        The VL53L1X has an 8-bit hardware I2C address of 0x52 (write) / 0x53 (read) per the
+                        datasheet. The Arduino Wire library uses 7-bit addresses, so the effective address seen
+                        in code is <code>0x52 &gt;&gt; 1 = 0x29</code>. Both sensors share this same default
+                        address out of the box.
+                    </p>
+
+                    <h3>Approach: Two ToF Sensors on the Same I2C Bus</h3>
+                    <p>
+                        Since both sensors default to address 0x29, placing them on the same I2C bus without
+                        any intervention causes address conflicts — both sensors respond simultaneously,
+                        garbling the data. There are two solutions:
+                    </p>
+                    <ul>
+                        <li>
+                            <strong>Programmatic address change:</strong> While the sensor is powered, call
+                            <code>setI2CAddress()</code> to remap one sensor to a new address. The change is
+                            stored in volatile memory and is lost on power cycle, requiring re-initialization
+                            every boot.
+                        </li>
+                        <li>
+                            <strong>XSHUT pin approach:</strong> Pull one sensor's XSHUT line LOW to shut it
+                            off, initialize and remap the other sensor, then release XSHUT to wake the second
+                            sensor at its default address.
+                        </li>
+                    </ul>
+                    <p>
+                        I chose the <strong>XSHUT approach</strong> because it makes the initialization
+                        sequence explicit and deterministic. On every power cycle, the boot sequence
+                        re-establishes unique addresses, so even if a sensor resets mid-operation it will be
+                        correctly re-initialized. Only Sensor 2's XSHUT is wired to Artemis pin A0; Sensor 1
+                        is always powered and gets its address changed to 0x30 during setup.
+                    </p>
+
+                    <h3>Sensor Placement on Robot</h3>
+                    <p>
+                        I plan to mount one sensor at the <strong>front</strong> of the robot (Sensor 1) and
+                        one on the <strong>side</strong> (Sensor 2). This gives simultaneous forward and
+                        lateral obstacle coverage: the front sensor enables forward collision avoidance, and
+                        the side sensor enables wall-following and side-clearance detection.
+                    </p>
+                    <p>
+                        <strong>Scenarios where the robot will miss obstacles:</strong> obstacles that are
+                        very low to the ground (below the sensor's field of view), highly transparent or
+                        IR-absorbing surfaces (glass, dark foam), obstacles in the robot's rear quadrant,
+                        and narrow objects that fall outside the sensor's ~25° detection cone.
+                    </p>
+
+                    <figure>
+                        <img src="./images/lab3/wiring_diagram.png" alt="Prelab wiring diagram">
+                        <figcaption>
+                            <strong>Figure 1.</strong> Wiring diagram: Artemis Nano connected to Qwiic
+                            breakout board, Sensor 1 (front, always-on, remapped to 0x30), Sensor 2 (side,
+                            XSHUT to A0, stays at 0x29), and IMU — all on the same I2C bus.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 1: BATTERY                                              -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task1">
+                <h2 class="section-title">Task 1: JST Connector Battery and Powering Artemis</h2>
+                <div class="section-content">
+                    <p>
+                        I soldered a JST connector to the 650 mAh battery from the RC car. The process:
+                    </p>
+                    <ul>
+                        <li>Cut one end of a Qwiic cable (one wire at a time — never both simultaneously,
+                            as this shorts the battery terminals).</li>
+                        <li>Strip, twist, and pre-tin each wire end.</li>
+                        <li>Solder and cover each joint with heat shrink tubing (not electrical tape, which
+                            can fall off and leave residue).</li>
+                        <li>Check polarity by briefly connecting to the Artemis. The JST connector color
+                            convention is not standardized — my battery's red and black were reversed relative
+                            to the Artemis connector, so I connected black-to-red and red-to-black.</li>
+                    </ul>
+                    <p>
+                        I verified the battery-powered setup by running the BLE PING/PONG test from Lab 1
+                        with the USB disconnected. The Artemis advertised over BLE and responded correctly,
+                        confirming untethered operation. Note: the Artemis also charges the battery when USB
+                        is simultaneously connected.
+                    </p>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/hs3x5PLf8X4?si=K6DGZ6_kvC0VHpTN"
+                            title="Battery-powered Artemis"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                    </div>
+                    <figure>
+                        <img src="./images/lab3/fig_battery_stripped.png" alt="Battery wire cut, stripped, and twisted">
+                        <figcaption>
+                            <strong>Figure 2.</strong> Battery wire cut, stripped, and twisted — ready to tin
+                            and solder to JST jumper wires.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab3/fig_artemis_battery.png" alt="Artemis connected to battery via JST">
+                        <figcaption>
+                            <strong>Figure 3.</strong> Artemis Nano connected to 650 mAh battery via JST
+                            connector. Red-to-black polarity verified before use.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 2: LIBRARY                                              -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task2">
+                <h2 class="section-title">Task 2: SparkFun VL53L1X 4m Laser Distance Sensor Library</h2>
+                <div class="section-content">
+                    <p>
+                        Using the Arduino Library Manager, I installed the
+                        <strong>SparkFun VL53L1X 4m Laser Distance Sensor</strong> library (version 1.2.12).
+                        This library provides a high-level C++ API for the VL53L1X, abstracting the ST
+                        Microelectronics driver. It exposes the key methods used throughout this lab:
+                        <code>begin()</code>, <code>startRanging()</code>, <code>checkForDataReady()</code>,
+                        <code>getDistance()</code>, <code>clearInterrupt()</code>, <code>stopRanging()</code>,
+                        <code>setDistanceModeLong()</code>, and <code>setI2CAddress()</code>.
+                    </p>
+                    <figure>
+                        <img src="./images/lab3/fig_library.png" alt="Arduino Library Manager: SparkFun VL53L1X installed">
+                        <figcaption>
+                            <strong>Figure 4.</strong> Arduino Library Manager showing SparkFun VL53L1X 4m
+                            Laser Distance Sensor library installed at version 1.2.12.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 3 & 4: WIRING                                          -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task3_4">
+                <h2 class="section-title">Task 3 &amp; 4: Connect Qwiic Breakout Board and ToF Sensors</h2>
+                <div class="section-content">
+                    <p>
+                        I connected the SparkFun Qwiic breakout board to the Artemis Nano using a short
+                        Qwiic cable. I then soldered long Qwiic cables to each ToF sensor breakout board,
+                        following the wire color convention:
+                    </p>
+                    <ul>
+                        <li><strong>Blue</strong> → SDA</li>
+                        <li><strong>Yellow</strong> → SCL</li>
+                        <li><strong>Red</strong> → 3.3V (VIN)</li>
+                        <li><strong>Black</strong> → GND</li>
+                    </ul>
+                    <p>
+                        Long cables were used for both sensors since they will be mounted at different
+                        locations on the robot chassis and need to reach the Qwiic breakout board.
+                        Electric tape was applied to insulate the Artemis pins from shorting against
+                        the metal laptop exterior during testing.
+                    </p>
+                    <figure>
+                        <img src="./images/lab3/solder.png" alt="Artemis + Qwiic breakout + ToF sensor">
+                    <figcaption>
+                            <strong>Figure 5.</strong> ToF soldering
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab3/fig_full_setup.png" alt="Artemis + Qwiic breakout + ToF sensor">
+                        <figcaption>
+                            <strong>Figure 6.</strong> Artemis Nano, Qwiic breakout board, and first ToF
+                            sensor wired up and ready for I2C scanning.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 5: I2C SCAN                                            -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task5">
+                <h2 class="section-title">Task 5: Scan I2C Channel (Example05_wire_I2C)</h2>
+                <div class="section-content">
+                    <p>
+                        I ran <strong>File → Examples → Apollo3 → Wire → Example05_wire_I2C</strong>
+                        with each ToF sensor connected one at a time. The program iterates through
+                        7-bit addresses 1–126 and reports which ones acknowledge an I2C transaction.
+                        Both sensors were detected at address <strong>0x29</strong>:
+                    </p>
+                    <pre><code>Scanning... (port: 0x10000E9C), time (ms): 33244
+    0x29 detected
+
+Scanning... (port: 0x10000E9C), time (ms): 60258
+    0x29 detected</code></pre>
+                    <p>
+                        At first I expected 0x52, since the VL53L1X datasheet specifies an 8-bit write
+                        address of 0x52. However, the Wire library uses 7-bit addresses, so it scans
+                        the range 1–126. The 8-bit address 0x52 in binary is <code>1010010</code>;
+                        right-shifting by one bit yields <code>101001</code> = 0x29. This is the
+                        7-bit address that Wire detects and reports. Both sensors confirmed to be on
+                        the bus at 0x29.
+                    </p>
+                    <figure>
+                        <img src="./images/lab3/fig_i2c_scan1.png" alt="I2C scan: first ToF sensor at 0x29">
+                        <figcaption>
+                            <strong>Figure 7.</strong> Serial Monitor output with first ToF sensor
+                            connected — detected at 0x29.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab3/fig_i2c_scan2.png" alt="I2C scan: second ToF sensor at 0x29">
+                        <figcaption>
+                            <strong>Figure 8.</strong> Serial Monitor output with second ToF sensor
+                            connected — also detected at 0x29, confirming the address conflict.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 6: MODES                                               -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task6">
+                <h2 class="section-title">Task 6: Distance Modes</h2>
+                <div class="section-content">
+                    <p>
+                        The VL53L1X offers three ranging modes that trade off maximum range against
+                        ambient light immunity:
+                    </p>
+                    <table style="width:100%; border-collapse: collapse; font-size: 14px; margin: 20px 0;">
+                        <thead>
+                            <tr style="background:#eff6ff; text-align:left;">
+                                <th style="padding: 10px 14px; border: 1px solid #e5e7eb;">Mode</th>
+                                <th style="padding: 10px 14px; border: 1px solid #e5e7eb;">Max Distance</th>
+                                <th style="padding: 10px 14px; border: 1px solid #e5e7eb;">Pros / Cons</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Short</td>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Up to 1.3 m</td>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Best ambient light immunity; limited range</td>
+                            </tr>
+                            <tr style="background:#fafafa;">
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Medium</td>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Up to 3 m</td>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Balanced; requires separate Pololu library</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Long (default)</td>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Up to 4 m</td>
+                                <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">Maximum range; less immune to ambient IR noise</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p>
+                        I chose <strong>Long mode</strong>. The Fast Robots lab room is approximately 4 m
+                        across, and I want the maximum detection range for fast driving scenarios. The lab is
+                        well-lit indoors, so ambient IR noise is not a major concern. Long mode is also the
+                        default, requiring only an explicit confirmation call:
+                    </p>
+                    <pre><code>sensor1.setDistanceModeLong();
+sensor2.setDistanceModeLong();</code></pre>
+                    <p>
+                        Note: Medium mode requires the separate
+                        <a href="https://github.com/pololu/vl53l1x-arduino.git" target="_blank">Pololu VL53L1X library</a>
+                        and is not used here.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 7: CHARACTERIZATION                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task7">
+                <h2 class="section-title">Task 7: Test Chosen Mode — Range, Accuracy, Repeatability, Ranging Time</h2>
+                <div class="section-content">
+                    <p>
+                        I tested Long mode using the SparkFun <code>Example1_ReadDistance</code>, then
+                        augmented it with BLE to stream timestamped readings to Jupyter Lab for analysis.
+                        The VL53L1X uses a 940 nm Class 1 VCSEL (Vertical Cavity Surface Emitting Laser)
+                        to time the round-trip of an IR pulse. Per SparkFun documentation, precision is
+                        1 mm and accuracy is approximately ±5 mm.
+                    </p>
+
+                    <h3>Setup</h3>
+                    <p>
+                        I taped the Artemis and ToF sensor to the back of my laptop (electric tape insulating
+                        the pins from the metal exterior), set up a tape measure from a wall, and moved the
+                        laptop to known distances: 200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, and
+                        2000 mm. For each position I collected 10 samples via BLE notification, for a total
+                        of 100 measurements.
+                    </p>
+
+                    <figure>
+                        <img src="./images/lab3/z1.png" alt="VL53L1X Long Mode characterization plot">
+                        <figcaption>
+                            <strong>Figure 9.</strong> Taking 1st data point.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab3/z2.png" alt="VL53L1X Long Mode characterization plot">
+                        <figcaption>
+                            <strong>Figure 10.</strong> Setup.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab3/z3.png" alt="VL53L1X Long Mode characterization plot">
+                        <figcaption>
+                            <strong>Figure 11.</strong> Error, received 36 sample instead of 40.
+                        </figcaption>
+                    </figure>
+
+                    <h3>Arduino Code</h3>
+                    <pre><code>// Global
+int distance = 0;
+
+// In loop(), inside while(central.connected()):
+distanceSensor.startRanging();
+while (!distanceSensor.checkForDataReady()) { delay(1); }
+distance = distanceSensor.getDistance();
+distanceSensor.clearInterrupt();
+distanceSensor.stopRanging();
+
+// On GET_SENSOR1_DATA command:
+tx_estring_value.clear();
+tx_estring_value.append("Distance(mm):");
+tx_estring_value.append(distance);
+tx_estring_value.append(",T:");
+tx_estring_value.append((int)millis());
+tx_characteristic_string.writeValue(tx_estring_value.c_str());</code></pre>
+
+                    <h3>Python Collection Code</h3>
+                    <pre><code>tof_data = []
+def tof_notif_handler(uuid, byte_array):
+    s = ble.bytearray_to_string(byte_array)
+    d = dict(item.split(':') for item in s.split(','))
+    tof_data.append((int(d['T']), int(d['Distance(mm)'])))
+
+distances_mm = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
+means, stds = [], []
+
+for expected in distances_mm:
+    tof_data.clear()
+    input(f'Move sensor to {expected}mm, then press Enter...')
+    ble.start_notify(ble.uuid['TX_STRING'], tof_notif_handler)
+    while len(tof_data) < 10:
+        ble.send_command(CMD_lab3.GET_SENSOR1_DATA, '')
+        time.sleep(0.15)
+    ble.stop_notify(ble.uuid['TX_STRING'])
+    vals = [d[1] for d in tof_data]
+    means.append(np.mean(vals))
+    stds.append(np.std(vals))
+    print(f'mean={means[-1]:.1f} mm  std={stds[-1]:.1f} mm')</code></pre>
+
+                    <h3>Results</h3>
+                    <p>
+                        Measured mean values tracked closely with expected distances across the full
+                        200–2000 mm range. Error bars (±1σ) were small (~3–8 mm standard deviation),
+                        indicating good repeatability consistent with the ±5 mm accuracy specification.
+                    </p>
+                    <figure>
+                        <img src="./images/lab3/fig_tof_characterization.png" alt="VL53L1X Long Mode characterization plot">
+                        <figcaption>
+                            <strong>Figure 12.</strong> VL53L1X ToF Sensor in Long Mode: expected vs.
+                            measured distance (mm) with ±1σ error bars. Dashed line = perfect accuracy.
+                            100 samples total (10 per distance).
+                        </figcaption>
+                    </figure>
+
+                    <h3>Troubleshooting</h3>
+                    <p>
+                        Several issues arose during data collection:
+                    </p>
+                    <ul>
+                        <li>
+                            All measured values initially clustered around ~300 mm regardless of expected
+                            distance — the sensor was pointing at the laptop screen instead of the wall.
+                            Fixed by tilting the laptop screen so the sensor faces the wall directly.
+                        </li>
+                        <li>
+                            Inconsistent readings due to sensor movement — fixed by taping the Artemis
+                            and sensor firmly to the back of the laptop with electric tape to insulate
+                            the pins from the metal exterior.
+                        </li>
+                        <li>
+                            Lost BLE samples at a sample delay of 0.05 s — fixed by increasing to 0.15 s.
+                        </li>
+                        <li>
+                            BLE disconnections during collection — reconnected and resumed.
+                        </li>
+                    </ul>
+                    <figure>
+                        <img src="./images/lab3/fig_taped_sensor.png" alt="Artemis and ToF sensor taped to laptop">
+                        <figcaption>
+                            <strong>Figure 13.</strong> Artemis and ToF sensor taped to the back of the
+                            laptop for consistent measurements. Electric tape insulates the pins from the
+                            metal chassis.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 8: DUAL SENSORS                                        -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task8">
+                <h2 class="section-title">Task 8: Hook Up Both ToF Sensors</h2>
+                <div class="section-content">
+                    <p>
+                        Running Example05_wire_I2C with both sensors simultaneously causes the Artemis to
+                        report a device at nearly every I2C address — both sensors pull SDA/SCL
+                        simultaneously, producing ambiguous acknowledgements. This confirms that both
+                        sensors cannot coexist at the same default address 0x29.
+                    </p>
+                    <figure>
+                        <img src="./images/lab3/fig_i2c_conflict.png" alt="Spurious I2C detections with both sensors">
+                        <figcaption>
+                            <strong>Figure 14.</strong> Serial Monitor showing spurious device detections
+                            at nearly every address when both sensors are connected without address
+                            remapping.
+                        </figcaption>
+                    </figure>
+
+                    <h3>XSHUT Address Remapping Procedure</h3>
+                    <p>
+                        Only Sensor 2's XSHUT pin is wired to Artemis A0. Sensor 1 has no XSHUT wire
+                        (always powered). The initialization sequence in <code>setup()</code>:
+                    </p>
+                    <ul>
+                        <li>Pull A0 LOW → Sensor 2 is off. Only Sensor 1 is on the bus at 0x29.</li>
+                        <li>Call <code>sensor1.begin()</code> to initialize Sensor 1.</li>
+                        <li>Call <code>sensor1.setI2CAddress(0x30)</code> to remap Sensor 1 (volatile memory).</li>
+                        <li>Pull A0 HIGH → Sensor 2 wakes at its default address 0x29. No conflict.</li>
+                        <li>Call <code>sensor2.begin()</code> to initialize Sensor 2 at 0x29.</li>
+                    </ul>
+                    <p>
+                        The address change is stored in volatile memory — a power cycle requires repeating
+                        this sequence.
+                    </p>
+                    <pre><code>#define XSHUT_Sensor2 A0
+SFEVL53L1X sensor1;  // remapped to 0x30
+SFEVL53L1X sensor2;  // stays at 0x29
+
+// In setup():
+pinMode(XSHUT_Sensor2, OUTPUT);
+digitalWrite(XSHUT_Sensor2, LOW);  // sensor 2 off
+delay(50);
+
+if (sensor1.begin() != 0) { while (1); }  // freeze on failure
+sensor1.setI2CAddress(0x30);
+Serial.println("Sensor 1 online at 0x30");
+
+digitalWrite(XSHUT_Sensor2, HIGH);  // sensor 2 wakes at 0x29
+delay(50);
+
+if (sensor2.begin() != 0) { while (1); }
+Serial.println("Sensor 2 online at 0x29");
+
+sensor1.setDistanceModeLong();
+sensor2.setDistanceModeLong();</code></pre>
+                    <p>
+                        The Serial Monitor confirms both sensors initialized correctly:
+                    </p>
+                    <pre><code>VL53L1X Qwiic Test
+Advertising BLE with MAC: c0:81:b4:24:2b:64
+Sensor 1 at 0x30
+Sensor 2 at 0x29
+Both sensors ready!</code></pre>
+                    <figure>
+                        <img src="./images/lab3/fig_dual_sensors.png" alt="Both sensors printing readings simultaneously">
+                        <figcaption>
+                            <strong>Figure 15.</strong> Both ToF sensors printing simultaneous distance
+                            readings in the Serial Monitor after successful XSHUT address remapping.
+                        </figcaption>
+                    </figure>
+
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/_cxkn4PRFuk?si=0o6ilismL2QPwxvm"
+                            title="Both ToF sensors working simultaneously"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>Both ToF sensors reading distances simultaneously over Serial.</p>
+                    </div>
+
+                    <h3>I2C Pull-Up Resistors</h3>
+                    <p>
+                        When using two SparkFun VL53L1X breakout boards on the same I2C bus, both boards
+                        include their own I2C pull-up resistors. Two sets of pull-ups in parallel halve the
+                        effective resistance, which can violate I2C spec and cause bus communication errors.
+                        The recommended fix is to cut the pull-up resistor trace on one board. Since the
+                        Qwiic ecosystem uses 3.3V and the Artemis Nano's Qwiic connector includes internal
+                        protection circuitry, both sensors communicated reliably without modification in
+                        testing — but cutting one board's pull-up traces would be best practice for a
+                        permanent robot build.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 9: NON-BLOCKING LOOP                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task9">
+                <h2 class="section-title">Task 9: Non-Blocking Loop — Artemis Clock at Full Speed</h2>
+                <div class="section-content">
+                    <p>
+                        To prevent the loop from hanging while waiting for sensor data, I use a
+                        non-blocking polling pattern. <code>startRanging()</code> is called once before
+                        the BLE loop begins; each iteration then only checks
+                        <code>checkForDataReady()</code> without any <code>delay()</code>.
+                        The Artemis clock (<code>millis()</code>) is printed every iteration regardless
+                        of whether new sensor data is available.
+                    </p>
+                    <pre><code>// Non-blocking ranging helpers
+
+void startNonBlockingRanging() {
+    sensor1.startRanging();
+    sensor2.startRanging();
+    sensor1_ranging = true;
+    sensor2_ranging = true;
+}
+
+void checkAndReadSensors() {
+    // Sensor 1 — read only when data is ready
+    if (sensor1_ranging && sensor1.checkForDataReady()) {
+        distance1 = sensor1.getDistance();
+        sensor1.clearInterrupt();
+        sensor1.stopRanging();
+        sensor1.startRanging();   // restart immediately
+    }
+    // Sensor 2 — same pattern
+    if (sensor2_ranging && sensor2.checkForDataReady()) {
+        distance2 = sensor2.getDistance();
+        sensor2.clearInterrupt();
+        sensor2.stopRanging();
+        sensor2.startRanging();
+    }
+}
+
+// Inside while(central.connected()):
+Serial.print("T(ms): ");
+Serial.println(millis());   // prints every iteration
+checkAndReadSensors();      // only reads when data ready</code></pre>
+
+                    <h3>Loop Speed and Limiting Factor</h3>
+                    <p>
+                        The Artemis loop runs <strong>thousands of iterations per second</strong> —
+                        the <code>millis()</code> print and sensor check together execute in
+                        microseconds. The limiting factor is the <strong>ToF sensor measurement time</strong>,
+                        not the microcontroller. In Long mode, the VL53L1X takes approximately 20 ms per
+                        reading (~50 Hz). The loop prints the clock far more frequently than new distance
+                        data arrives, confirming that the non-blocking approach keeps the processor
+                        fully available between sensor updates.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 10: TIME-STAMPED DATA VIA BLE                          -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task10">
+                <h2 class="section-title">Task 10: Time-Stamped ToF and IMU Data via BLE</h2>
+                <div class="section-content">
+                    <p>
+                        I combined the Lab 2 IMU code (complementary filter for pitch/roll/yaw) with the
+                        Lab 3 dual-ToF code into a single sketch. Two new BLE commands were added:
+                        <code>START_RECORD</code> buffers ToF and IMU data into arrays for 5 seconds;
+                        <code>SEND_RECORD</code> transmits all buffered data over BLE and signals
+                        completion with <code>"DONE"</code>.
+                    </p>
+
+                    <h3>Arduino Recording Logic</h3>
+                    <pre><code>#define MAX_RECORD 500
+#define RECORD_DURATION 5000  // ms
+
+// Buffers
+int rec_d1[MAX_RECORD], rec_d2[MAX_RECORD];
+unsigned long rec_tof_t[MAX_RECORD];
+int rec_tof_count = 0;
+
+float rec_compl_pitch[MAX_RECORD], rec_compl_roll[MAX_RECORD], rec_compl_yaw[MAX_RECORD];
+unsigned long rec_imu_t[MAX_RECORD];
+int rec_imu_count = 0;
+
+// Store ToF sample (inside checkAndReadSensors when recording)
+if (recording &amp;&amp; rec_tof_count &lt; MAX_RECORD) {
+    rec_d1[rec_tof_count]    = distance1;
+    rec_d2[rec_tof_count]    = distance2;
+    rec_tof_t[rec_tof_count] = millis() - record_start;
+    rec_tof_count++;
+}
+
+// Store IMU sample (called each loop iteration via recordIMU())
+void recordIMU() {
+    if (recording &amp;&amp; rec_imu_count &lt; MAX_RECORD &amp;&amp; myICM.dataReady()) {
+        myICM.getAGMT();
+        updateAccelPitchRoll();
+        updateGyroRollPitchYaw();
+        updateComplRollPitchYaw();
+        rec_compl_pitch[rec_imu_count] = compl_pitch;
+        rec_compl_roll[rec_imu_count]  = compl_roll;
+        rec_compl_yaw[rec_imu_count]   = compl_yaw;
+        rec_imu_t[rec_imu_count]       = millis() - record_start;
+        rec_imu_count++;
+    }
+}</code></pre>
+
+                    <h3>Python BLE Collection Code</h3>
+                    <pre><code>rec_d1, rec_d2, rec_tof_t = [], [], []
+rec_pitch, rec_roll, rec_yaw, rec_imu_t = [], [], [], []
+done_flag = [False]
+
+def record_notif_handler(uuid, byte_array):
+    s = ble.bytearray_to_string(byte_array)
+    if s == 'DONE':
+        done_flag[0] = True
+        return
+    parts = s.split(',')
+    if parts[0] == 'TOF':
+        rec_d1.append(int(parts[1]))
+        rec_d2.append(int(parts[2]))
+        rec_tof_t.append(int(parts[3]))
+    elif parts[0] == 'IMU':
+        rec_pitch.append(float(parts[1]))
+        rec_roll.append(float(parts[2]))
+        rec_yaw.append(float(parts[3]))
+        rec_imu_t.append(int(parts[4]))
+
+ble.start_notify(ble.uuid['TX_STRING'], record_notif_handler)
+ble.send_command(CMD_lab3.START_RECORD, '')
+print('Recording for 5 seconds...')
+time.sleep(5.5)
+ble.send_command(CMD_lab3.SEND_RECORD, '')
+while not done_flag[0]: time.sleep(0.1)
+ble.stop_notify(ble.uuid['TX_STRING'])
+print(f'ToF: {len(rec_d1)} samples, IMU: {len(rec_pitch)} samples')</code></pre>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 11: TOF PLOT                                           -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task11">
+                <h2 class="section-title">Task 11: ToF Data Against Time</h2>
+                <div class="section-content">
+                    <p>
+                        After recording, timestamps are converted to seconds (relative to the first sample)
+                        and both sensor distances are plotted on the same axes:
+                    </p>
+                    <pre><code>t_tof = (np.array(rec_tof_t) - rec_tof_t[0]) / 1000.0
+
+plt.figure()
+plt.plot(t_tof, rec_d1, 'b-o', markersize=3, label='Sensor 1 (front)')
+plt.plot(t_tof, rec_d2, 'r-o', markersize=3, label='Sensor 2 (side)')
+plt.xlabel('Time (s)')
+plt.ylabel('Distance (mm)')
+plt.title('ToF Distance vs Time (5-second recording)')
+plt.legend()
+plt.grid(True)
+plt.show()</code></pre>
+                    <figure>
+                        <img src="./images/lab3/fig_tof_vs_time.png" alt="ToF sensor distance vs time plot">
+                        <figcaption>
+                            <strong>Figure 16.</strong> Sensor 1 (blue, front) and Sensor 2 (red, side)
+                            distance in mm vs. time over a 5-second BLE recording. Both sensors update
+                            at approximately 50 Hz (Long mode, ~20 ms per measurement).
+                        </figcaption>
+                    </figure>
+                    <p>
+                        Both sensors sample at approximately 50 Hz in Long mode and are interleaved in
+                        the recording buffer by whichever sensor finishes its measurement first.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 12: IMU PLOT                                           -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task12">
+                <h2 class="section-title">Task 12: IMU Data Against Time</h2>
+                <div class="section-content">
+                    <p>
+                        The IMU stores complementary-filtered pitch, roll, and yaw. The complementary
+                        filter (from Lab 2) blends accelerometer angle estimates with gyroscope
+                        integration using <code>accel_gain = 0.1</code> (10% accelerometer, 90%
+                        gyroscope), providing both short-term stability and long-term drift correction.
+                    </p>
+                    <pre><code>t_imu = (np.array(rec_imu_t) - rec_imu_t[0]) / 1000.0
+
+plt.figure()
+plt.plot(t_imu, rec_pitch, color='red',   label='Pitch')
+plt.plot(t_imu, rec_roll,  color='blue',  label='Roll')
+plt.plot(t_imu, rec_yaw,   color='green', label='Yaw')
+plt.xlabel('Time (s)')
+plt.ylabel('Angle (°)')
+plt.title('IMU Complementary Filter (Pitch / Roll / Yaw) vs Time')
+plt.legend()
+plt.grid(True)
+plt.show()</code></pre>
+                    <figure>
+                        <img src="./images/lab3/fig_imu_vs_time.png" alt="IMU pitch roll yaw vs time plot">
+                        <figcaption>
+                            <strong>Figure 17.</strong> Complementary-filtered pitch (red), roll (blue),
+                            and yaw (green) in degrees vs. time over a 5-second BLE recording. The IMU
+                            samples at approximately 200 Hz, providing significantly more data points than
+                            the ToF sensors over the same window.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        Yaw integrates the gyroscope only and drifts slowly over time, while pitch and
+                        roll are stabilized by the accelerometer correction term. Over a 5-second window
+                        the drift is small and acceptable for robot control.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://cdn.sparkfun.com/assets/e/1/8/4/e/VL53L1X_API.pdf" target="_blank">VL53L1X API Manual (UM2356) — ST Microelectronics</a></li>
+                        <li><a href="https://cdn.sparkfun.com/assets/8/9/9/a/6/VL53L0X_DS.pdf" target="_blank">VL53L1X Datasheet — ST Microelectronics</a></li>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2026/labs/Lab3.html" target="_blank">Lab 3 Instructions — Fast Robots @ Cornell</a></li>
+                        <li>SparkFun VL53L1X Arduino Library documentation</li>
+                        <li>Arduino Wire library documentation (7-bit address convention)</li>
+                        <li>Past student lab reports (for 0x52 → 0x29 address explanation reference)</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my399@cornell.edu">my399@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 — Fast Robots @ Cornell</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
