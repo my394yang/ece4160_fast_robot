@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 4 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 4: Motors and Open Loop Control</h1>
+            </header>
+
+            <!-- ============================================================ -->
+            <!--  OBJECTIVE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The purpose of this lab is to change from manual to open loop control of the robot. 
+                        This involves hooking up the Artemis board to two dual motor drivers, testing the motor 
+                        drivers with the bench power supply, installing everything in the car chassis, and 
+                        demonstrating open-loop control by programming sequences of movements (forward, backward, 
+                        turns) using timed PWM signals.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  PRELAB                                                       -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="prelab">
+                <h2 class="section-title">Prelab</h2>
+                <div class="section-content">
+                    <h3>Power Architecture: Separate Batteries for Artemis and Motors</h3>
+                    <p>
+                        The Artemis and motor drivers are powered by <strong>separate batteries</strong> for 
+                        several critical reasons:
+                    </p>
+                    <ul>
+                        <li>
+                            <strong>Different voltage requirements:</strong> The Artemis needs a precise 3.3V 
+                            (regulated from battery) while motors can tolerate voltage fluctuations (3.7V–4.2V).
+                        </li>
+                        <li>
+                            <strong>Voltage sag under load:</strong> Motors draw high current during startup, 
+                            acceleration, or stall (2–3A), causing the battery voltage to drop temporarily. If 
+                            the Artemis shares the same battery, the voltage could drop below 3.3V, causing brownout, 
+                            loss of BLE connection, sensor data corruption, and control system failure.
+                        </li>
+                        <li>
+                            <strong>Electrical noise isolation:</strong> Motors generate electromagnetic interference 
+                            (EMI) and voltage spikes from PWM switching. Separate batteries minimize the coupling of 
+                            motor noise into the Artemis circuit, preventing crashes and sensor glitches.
+                        </li>
+                        <li>
+                            <strong>Safety and debugging:</strong> If motors short-circuit or draw excessive current, 
+                            only the motor battery is affected—the Artemis stays powered so telemetry and debug 
+                            information remain accessible.
+                        </li>
+                    </ul>
+                    <p>
+                        <strong>Common ground:</strong> Although the batteries are separate, the Artemis GND and 
+                        motor battery GND <strong>must be connected</strong> so PWM signals have a common reference.
+                    </p>
+
+                    <figure>
+                        <img src="./images/lab4/fig1.jpg" alt="Wiring diagram: Artemis, battery, motor drivers, motors">
+                        <figcaption>
+                            <strong>Figure 1.</strong> Wiring diagram showing Artemis (powered by 650mAh battery), 
+                            two DRV8833 dual motor drivers (powered by 850mAh battery), and two motors. Separate 
+                            power supplies with common ground.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 1: MOTOR DRIVER WIRING                                 -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task1">
+                <h2 class="section-title">Task 1: Connect Motor Drivers with Parallel-Coupled Channels</h2>
+                <div class="section-content">
+                    <p>
+                        I connected one DRV8833 dual motor driver to drive a single motor using 
+                        <strong>parallel-coupled inputs and outputs</strong>. This configuration uses both 
+                        channels (A and B) of the dual motor driver to drive one motor, doubling the available 
+                        current without overheating the chip.
+                    </p>
+
+                    <h3>Parallel Coupling</h3>
+                    <p>
+                        On each DRV8833 board:
+                    </p>
+                    <ul>
+                        <li><strong>AIN1 connected to BIN1</strong></li>
+                        <li><strong>AIN2 connected to BIN2</strong></li>
+                        <li><strong>AOUT1 connected to BOUT1</strong> → Motor positive terminal</li>
+                        <li><strong>AOUT2 connected to BOUT2</strong> → Motor negative terminal</li>
+                    </ul>
+                    <p>
+                        Since both channels are on the same IC with shared clock circuitry, timing is not an issue. 
+                        The DRV8833 is rated for 1.2A per channel, so parallel coupling allows up to ~2.4A per 
+                        motor (well above the stall current of these small motors).
+                    </p>
+                    <p>
+                        Motor polarity doesn't matter at this stage—flipping the polarity only reverses the 
+                        direction (CW vs CCW), which is controlled in software.
+                    </p>
+
+                    <figure>
+                        <img src="./images/lab4/fig2.png" alt="Parallel-coupled motor driver I/O">
+                        <figcaption>
+                            <strong>Figure 2.</strong> DRV8833 dual motor driver with parallel-coupled I/O. 
+                            AIN1-BIN1, AIN2-BIN2, AOUT1-BOUT1, AOUT2-BOUT2 are connected together with yellow tape.
+                        </figcaption>
+                    </figure>
+
+                    <h3>Artemis to Motor Driver Connections</h3>
+                    <p>
+                        I wired the Artemis GPIO pins to the motor driver inputs as follows:
+                    </p>
+                    <ul>
+                        <li><strong>Motor 1 (right, front view):</strong> 
+                            <code>AIN1-BIN1 → Pin 12</code>, <code>AIN2-BIN2 → Pin A15</code></li>
+                        <li><strong>Motor 2 (left):</strong> 
+                            <code>AIN1-BIN1 → Pin A2</code>, <code>AIN2-BIN2 → Pin 4</code></li>
+                    </ul>
+                    <p>
+                        These pins were chosen because they support PWM via <code>analogWrite()</code> and are 
+                        evenly spaced on the Artemis Nano. Pin definitions in code:
+                    </p>
+                    <pre><code>// Motor 1 (right, front view) pins
+#define MOTOR1_IN_PLUS 12
+#define MOTOR1_IN_MINUS A15
+
+// Motor 2 (left) pins
+#define MOTOR2_IN_PLUS A2
+#define MOTOR2_IN_MINUS 4</code></pre>
+
+                    <figure>
+                        <img src="./images/lab4/fig3.png" alt="Artemis to motor driver GPIO connections">
+                        <figcaption>
+                            <strong>Figure 3.</strong> Artemis Nano connected to motor driver input pins via 
+                            jumper wires (blue, yellow, green). Pins 12, A15, A2, and 4 control motor direction 
+                            and speed.
+                        </figcaption>
+                    </figure>
+
+                    <h3>Power Supply Settings for Initial Testing</h3>
+                    <p>
+                        For initial debugging, I powered the motor driver VIN from a benchtop power supply 
+                        with adjustable current limiting. Settings:
+                    </p>
+                    <ul>
+                        <li><strong>Voltage: 3.7V</strong> (matches the 850mAh battery nominal voltage)</li>
+                        <li><strong>Current limit: 1.5A–2A</strong> (protects against shorts and provides headroom 
+                            for motor startup spikes)</li>
+                    </ul>
+                    <p>
+                        The DRV8833 supports 2.7V–10.8V input, so 3.7V is well within spec. The original RC car 
+                        used 2× AA batteries (~3V), so 3.7V provides adequate torque without overstressing the 
+                        motors.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 2: PWM MOTOR CONTROL TEST                              -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task2">
+                <h2 class="section-title">Task 2: Generate PWM Signals and Test Motor Control</h2>
+                <div class="section-content">
+                    <p>
+                        I wrote a test program to verify motor driver functionality before integrating everything 
+                        into the chassis. The code cycles through forward, stop, backward, stop with a 5-second 
+                        delay between each state:
+                    </p>
+                    <pre><code>int pwm_speed = 128;  // 50% duty cycle (0-255 range)
+
+void loop() {
+  Serial.println("Move forward");
+  forward(pwm_speed);
+  delay(5000);
+
+  Serial.println("Stop!");
+  stop();
+  delay(5000);
+
+  Serial.println("Move backward");
+  backward(pwm_speed);
+  delay(5000);
+
+  Serial.println("Stop!");
+  stop();
+  delay(5000);
+}
+
+void forward(int speed) {
+  analogWrite(MOTOR1_IN_PLUS, speed);
+  analogWrite(MOTOR1_IN_MINUS, 0);
+}
+
+void backward(int speed) {
+  analogWrite(MOTOR1_IN_PLUS, 0);
+  analogWrite(MOTOR1_IN_MINUS, speed);
+}
+
+void stop() {
+  analogWrite(MOTOR1_IN_PLUS, 0);
+  analogWrite(MOTOR1_IN_MINUS, 0);
+}</code></pre>
+
+                    <h3>Oscilloscope Verification</h3>
+                    <p>
+                        I used a MiniWare DS212 oscilloscope to verify the PWM signals at the motor driver outputs. 
+                        Figure 4 shows a clean 50% duty cycle square wave (~1kHz) at <code>pwm_speed = 128</code>:
+                    </p>
+                    <figure>
+                        <img src="./images/lab4/fig4.png" alt="Oscilloscope: 50% duty cycle PWM">
+                        <figcaption>
+                            <strong>Figure 4.</strong> Oscilloscope trace showing 50% duty cycle PWM signal 
+                            (pwm_speed = 128). Signal toggles between 0V and ~3.3V at approximately 1kHz.
+                        </figcaption>
+                    </figure>
+
+                    <p>
+                        Figure 5 shows the PWM signal at 100% duty cycle (<code>pwm_speed = 255</code>)—the 
+                        output is held HIGH continuously:
+                    </p>
+                    <figure>
+                        <img src="./images/lab4/fig5.png" alt="Oscilloscope: 100% duty cycle PWM">
+                        <figcaption>
+                            <strong>Figure 5.</strong> Oscilloscope trace showing 100% duty cycle (pwm_speed = 255). 
+                            Output is constant HIGH at ~3.3V (no toggling).
+                        </figcaption>
+                    </figure>
+
+                    <p>
+                        Both motors responded correctly to forward, backward, and stop commands when powered 
+                        from either the benchtop supply or the 850mAh battery.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 3: RC CAR DISASSEMBLY                                  -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task3">
+                <h2 class="section-title">Task 3: Remove Original RC Car Circuit Board</h2>
+                <div class="section-content">
+                    <p>
+                        I disassembled the RC car by removing the original circuit board and headlight LEDs. 
+                        I cut the motor and battery connector wires as close to the board as possible to 
+                        preserve wire length for future connections.
+                    </p>
+                    <figure>
+                        <img src="./images/lab4/fig6.png" alt="Original RC car circuit board with headlight LEDs">
+                        <figcaption>
+                            <strong>Figure 6.</strong> RC car chassis showing the original circuit board 
+                            (green PCB) and headlight LEDs before removal.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 4-6: DUAL MOTOR CONTROL & ASSEMBLY                     -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task4_6">
+                <h2 class="section-title">Tasks 4–6: Dual Motor Control and Robot Assembly</h2>
+                <div class="section-content">
+                    <p>
+                        I extended the movement helper functions to control both motors simultaneously:
+                    </p>
+                    <pre><code>void forward(int speed) {
+  analogWrite(MOTOR1_IN_PLUS, speed);
+  analogWrite(MOTOR1_IN_MINUS, 0);
+  analogWrite(MOTOR2_IN_PLUS, speed * 1.9);  // Calibration factor
+  analogWrite(MOTOR2_IN_MINUS, 0);
+}
+
+void backward(int speed) {
+  analogWrite(MOTOR1_IN_PLUS, 0);
+  analogWrite(MOTOR1_IN_MINUS, speed);
+  analogWrite(MOTOR2_IN_PLUS, 0);
+  analogWrite(MOTOR2_IN_MINUS, speed * 1.9);
+}
+
+void stop() {
+  analogWrite(MOTOR1_IN_PLUS, 0);
+  analogWrite(MOTOR1_IN_MINUS, 0);
+  analogWrite(MOTOR2_IN_PLUS, 0);
+  analogWrite(MOTOR2_IN_MINUS, 0);
+}</code></pre>
+                    <p>
+                        The <code>1.9x</code> multiplier on Motor 2 is a calibration factor to compensate for 
+                        motor speed mismatch—Motor 2 spins slower than Motor 1 at the same PWM value, so the 
+                        higher gain brings them into alignment for straight-line driving.
+                    </p>
+
+                    <h3>Robot Assembly</h3>
+                    <p>
+                        I mounted all components inside the car chassis using electrical tape initially, then 
+                        switched to velcro for easier maintenance. The IMU is screwed down at the rear for 
+                        stability. The two motor drivers sit in the cavity where the original RC PCB was located.
+                    </p>
+                    <figure>
+                        <img src="./images/lab4/fig7.png" alt="Top-down view of robot wiring">
+                        <figcaption>
+                            <strong>Figure 7.</strong> Top-down view of robot with all components installed: 
+                            Artemis (center-left), IMU (rear, red board), motor drivers (center cavity), 
+                            ToF sensors (front and side), batteries (yellow tape).
+                        </figcaption>
+                    </figure>
+
+                    <figure>
+                        <img src="./images/lab4/fig8.png" alt="Front view of robot wiring">
+                        <figcaption>
+                            <strong>Figure 8.</strong> Front view showing ToF sensor mounted at the front 
+                            (green board) and Artemis with motor driver connections.
+                        </figcaption>
+                    </figure>
+
+                    <figure>
+                        <img src="./images/lab4/fig9.png" alt="Cleaner wiring with velcro">
+                        <figcaption>
+                            <strong>Figure 9.</strong> Improved wiring with velcro straps replacing electrical 
+                            tape. Long wires are twisted and bundled with yellow tape to minimize EMI.
+                        </figcaption>
+                    </figure>
+
+                    <figure>
+                        <img src="./images/lab4/fig10.png" alt="Component placement diagram">
+                        <figcaption>
+                            <strong>Figure 10.</strong> Annotated photo showing physical placement of all 
+                            components: Artemis Nano (center), two motor drivers (parallel-coupled, in cavity), 
+                            IMU (rear), two ToF sensors (front and side), Qwiic MultiPort (under Artemis).
+                        </figcaption>
+                    </figure>
+
+                    <div class="video-container">
+                        <iframe src="https://youtube.com/embed/ZIDRADN-yd8" 
+                            title="Both motors moving forward and backward"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>Both motors responding to forward, backward, and stop commands.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 8: LOWER PWM LIMIT                                     -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task8">
+                <h2 class="section-title">Task 8: Lower Limit of PWM for Ground Movement</h2>
+                <div class="section-content">
+                    <p>
+                        To determine the minimum PWM value at which the robot can move forward and perform 
+                        on-axis turns on the ground, I started at <code>pwm_speed = 40</code> and decremented 
+                        by 5 until the robot stopped moving.
+                    </p>
+                    <p>
+                        <strong>Result:</strong> The robot moves reliably at <code>pwm_speed = 25</code>. 
+                        At <code>pwm_speed = 20</code>, the robot does not budge—static friction overcomes 
+                        the motor torque. The battery was fully charged (4.2V) for this test.
+                    </p>
+
+                    <div class="video-container">
+                        <iframe src="https://youtube.com/embed/1ZG8pkUr6YE" 
+                            title="PWM lower limit test"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>Testing the lower PWM limit. Robot moves at PWM = 25, stops at PWM = 20.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 9: CALIBRATION FOR STRAIGHT LINE                       -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task9">
+                <h2 class="section-title">Task 9: Calibration Factor for Straight-Line Driving</h2>
+                <div class="section-content">
+                    <p>
+                        The two motors do not spin at the same rate at identical PWM values. After testing 
+                        various multipliers, I found that <strong>Motor 2 requires 1.9× the PWM value of 
+                        Motor 1</strong> to achieve the same rotational speed.
+                    </p>
+                    <p>
+                        With <code>pwm_speed = 100</code> and the calibration factor applied, the robot drives 
+                        in a fairly straight line. Moving forward 1 meter corresponds to approximately 
+                        <code>delay(6000)</code> ms at this speed.
+                    </p>
+                    <p>
+                        <em>Note: The robot experienced a hardware failure before I could record a video of 
+                        straight-line driving for the report.</em>
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  TASK 10: OPEN LOOP CONTROL SEQUENCE                         -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="task10">
+                <h2 class="section-title">Task 10: Open Loop Control Demonstration</h2>
+                <div class="section-content">
+                    <p>
+                        To demonstrate open-loop control, I programmed the robot to execute the following 
+                        sequence:
+                    </p>
+                    <ol>
+                        <li>Move <strong>forward 1m</strong></li>
+                        <li>Move <strong>backward 1m</strong> (return to start)</li>
+                        <li>Rotate <strong>clockwise 180°</strong></li>
+                        <li>Rotate <strong>counter-clockwise 360°</strong></li>
+                    </ol>
+
+                    <h3>Rotation Helper Functions</h3>
+                    <pre><code>void rotateCW(int speed) {
+  // Right motor backward, left motor forward
+  analogWrite(MOTOR1_IN_PLUS, 0);
+  analogWrite(MOTOR1_IN_MINUS, speed);
+  analogWrite(MOTOR2_IN_PLUS, speed * 1.9);
+  analogWrite(MOTOR2_IN_MINUS, 0);
+}
+
+void rotateCCW(int speed) {
+  // Right motor forward, left motor backward
+  analogWrite(MOTOR1_IN_PLUS, speed);
+  analogWrite(MOTOR1_IN_MINUS, 0);
+  analogWrite(MOTOR2_IN_PLUS, 0);
+  analogWrite(MOTOR2_IN_MINUS, speed * 1.9);
+}</code></pre>
+
+                    <h3>Calibration Timing Values</h3>
+                    <p>
+                        At <code>pwm_speed = 100</code>:
+                    </p>
+                    <pre><code>int pwm_speed = 100;
+int forward_1m_time = 4000;      // ms to move forward 1m
+int backward_1m_time = 4000;     // ms to move backward 1m
+int rotate_180_CW_time = 1500;   // ms to rotate 180° CW
+int rotate_360_CCW_time = 3000;  // ms to rotate 360° CCW</code></pre>
+
+                    <h3>Main Loop</h3>
+                    <pre><code>void loop() {
+  // Forward 1m
+  Serial.println("1. Moving FORWARD 1m");
+  forward(pwm_speed);
+  delay(forward_1m_time);
+  stop();
+  delay(1000);
+
+  // Backward 1m
+  Serial.println("2. Moving BACKWARD 1m");
+  backward(pwm_speed);
+  delay(backward_1m_time);
+  stop();
+  delay(1000);
+
+  // Rotate CW 180°
+  Serial.println("3. Rotating CLOCKWISE 180°");
+  rotateCW(pwm_speed);
+  delay(rotate_180_CW_time);
+  stop();
+  delay(1000);
+
+  // Rotate CCW 360°
+  Serial.println("4. Rotating COUNTER-CLOCKWISE 360°");
+  rotateCCW(pwm_speed);
+  delay(rotate_360_CCW_time);
+  stop();
+  delay(1000);
+
+  Serial.println("=== Sequence Complete ===\n");
+  delay(5000);
+}</code></pre>
+
+                    <p>
+                        <em>Note: The robot experienced a hardware failure before I could record a video of 
+                        the full open-loop control sequence for the report.</em>
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2026/labs/Lab4.html" target="_blank">Lab 4 Instructions — Fast Robots @ Cornell</a></li>
+                        <li><a href="https://www.ti.com/lit/ds/symlink/drv8833.pdf" target="_blank">DRV8833 Dual Motor Driver Datasheet — Texas Instruments</a></li>
+                        <li><a href="https://jeffreycai.me/ece4160/lab4/" target="_blank">Jeffrey Cai's Lab 4 Report</a> (referenced for parallel-coupling motor driver inputs/outputs)</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
