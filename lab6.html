@@ -34,7 +34,7 @@
                     <p>
                         The purpose of this lab is to implement orientation PID control using the IMU gyroscope. 
                         Rather than controlling wall distance (Lab 5), the robot now controls its yaw angle 
-                        using differential drive — spinning both wheels at the same speed in opposite directions. 
+                        using differential drive, spinning both wheels at the same speed in opposite directions. 
                         When disturbed (kicked), the robot should return to its target angle.
                     </p>
                 </div>
@@ -49,7 +49,7 @@
                     <p>
                         The BLE communication structure carries over from Labs 1–5. The Artemis collects 
                         timestamped yaw, error, and control speed into arrays during the PID run, then 
-                        sends all data over BLE after the run completes — avoiding any BLE overhead during 
+                        sends all data over BLE after the run completes, avoiding any BLE overhead during 
                         the control loop. New commands were added for Lab 6:
                     </p>
                     <figure>
@@ -57,7 +57,7 @@
                         <figcaption>
                             <strong>Arduino <code>enum CommandTypes</code> (left) and Python 
                             <code>CMD_lab6</code> enum (right).</strong> The integer values must 
-                            match exactly — BLE transmits only the integer, not the name. 
+                            match exactly, BLE transmits only the integer, not the name. 
                             <code>CMD_lab5</code> is kept as a separate class for backward 
                             compatibility with Lab 5 notebooks.
                         </figcaption>
@@ -132,7 +132,7 @@
                 <div class="section-content">
                     <p>
                         Since <code>gyro_yaw = ∫ gyro_z dt</code>, the derivative of the yaw error is 
-                        simply the raw gyro Z reading — no numerical differentiation needed. This avoids 
+                        simply the raw gyro Z reading, no numerical differentiation needed. This avoids 
                         <strong>derivative kick</strong>: if the setpoint changes suddenly (via 
                         <code>SET_ORIENTATION_SETPOINT</code>), a traditional 
                         <code>(error - prev_error)/dt</code> implementation would spike the derivative 
@@ -179,7 +179,7 @@ orientation_control_speed = Kp*orientation_error
                     <p>
                         The commented-out I and D implementation is shown below. Notably, the D term 
                         uses the raw gyro reading directly rather than differencing consecutive error values. 
-                        Since yaw is already the integral of gyro Z, its derivative is just gyro Z — 
+                        Since yaw is already the integral of gyro Z, its derivative is just gyro Z, 
                         using this directly avoids derivative kick when the setpoint changes mid-run.
                     </p>
                     <figure>
@@ -217,7 +217,7 @@ orientation_control_speed = Kp*orientation_error
                         </figcaption>
                     </figure>
                     <p>
-                        The gyro was working fine — the real problem was that the motor correction 
+                        The gyro was working fine, the real problem was that the motor correction 
                         direction was inverted. With <code>orientation_error &gt; 0</code> (yaw below 
                         target), I was calling <code>rotateCW</code> which drove yaw further negative 
                         instead of correcting it. Swapping the two rotation directions fixed the runaway spin:
@@ -246,7 +246,7 @@ orientation_control_speed = Kp*orientation_error
                             <strong>Figure 6.</strong> Data collection block inside 
                             <code>runOrientationPIDController()</code>. Timestamp, yaw, error, and 
                             control speed are stored each iteration into 500-element arrays. No BLE 
-                            transmission happens here — data is sent in bulk only after the run completes.
+                            transmission happens here, data is sent in bulk only after the run completes.
                         </figcaption>
                     </figure>
  
@@ -260,8 +260,8 @@ orientation_control_speed = Kp*orientation_error
                         <img src="./images/lab6/python_start_pid_reset_0_set_setpoint.png" alt="Python Jupyter cell to reset yaw and start PID">
                         <figcaption>
                             <strong>Figure 7.</strong> Jupyter cell for starting the orientation PID. 
-                            <code>RESET_YAW</code> is sent twice — once to clear drift, once after 
-                            setting the setpoint — to ensure a clean zero reference before motors start.
+                            <code>RESET_YAW</code> is sent twice, once to clear drift, once after 
+                            setting the setpoint, to ensure a clean zero reference before motors start (The motor still moved a bit before declaring it's stop position as the setpoint 0°, but I'll debug this in future lab).
                         </figcaption>
                     </figure>
  
@@ -285,7 +285,7 @@ orientation_control_speed = Kp*orientation_error
  
                     <p>
                         At both Kp values, the robot corrects in the right direction but is noticeably 
-                        slow when pushed firmly by hand. This is expected from P-only control — the 
+                        slow when pushed gently by hand. This is expected from P-only control, the 
                         correction force scales linearly with error, so it weakens as the robot 
                         approaches the setpoint. Adding the I term will help push through the deadband 
                         at small errors, and Kd will improve settling speed. I also plan to add a 
@@ -305,7 +305,7 @@ orientation_control_speed = Kp*orientation_error
                     <p>
                         The plot shows clean proportional behavior: PWM starts saturated at 255 for the 
                         large initial error, ramps down as the robot approaches the setpoint, and drops 
-                        to 0 inside the deadzone with no oscillation — consistent with a slightly 
+                        to 0 inside the deadzone with no oscillation, consistent with a slightly 
                         underdamped P-only system. Adding Kd will tighten the settling.
                     </p>
                 </div>
@@ -333,7 +333,7 @@ orientation_control_speed = Kp*orientation_error
                         work around it manually.
                     </p>
                     <p>
-                        The ToF sensors are not used in Lab 6 — orientation control relies entirely on 
+                        The ToF sensors are not used in Lab 6, orientation control relies entirely on 
                         the IMU. However, I keep both sensors in the codebase for forward compatibility 
                         with later labs where combined distance and orientation control will be needed.
                     </p>
