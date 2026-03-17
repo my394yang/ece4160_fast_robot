@@ -39,7 +39,7 @@
                     </p>
                 </div>
             </section>
- 
+
             <!-- ============================================================ -->
             <!--  PRELAB                                                       -->
             <!-- ============================================================ -->
@@ -55,9 +55,7 @@
                     <figure>
                         <img src="./images/lab6/cmd_type_lab6.png" alt="Arduino enum CommandTypes and Python CMD_lab6 enum">
                         <figcaption>
-                            <strong>Arduino <code>enum CommandTypes</code> (left) and Python 
-                            <code>CMD_lab6</code> enum (right).</strong> The integer values must 
-                            match exactly, BLE transmits only the integer, not the name. 
+                            <strong><code>CMD_lab6</code> enum</strong> 
                             <code>CMD_lab5</code> is kept as a separate class for backward 
                             compatibility with Lab 5 notebooks.
                         </figcaption>
@@ -66,14 +64,14 @@
                         On the Python side, the notification handler parses the pipe-delimited BLE string 
                         and populates arrays for plotting:
                     </p>
-                    <pre><code>def orientation_pid_data_notif_handler(uuid, byte_array):
-    s = ble.bytearray_to_string(byte_array)
-    # format: "T:1234|Y:45.2|E:-5.1|C:60.0"
-    s_split = dict(item.split(":") for item in s.split("|"))
-    T_arr.append(int(s_split["T"]))
-    Yaw_arr.append(float(s_split["Y"]))
-    Error_arr.append(float(s_split["E"]))
-    Control_speed_arr.append(float(s_split["C"]))</code></pre>
+                    <figure>
+                        <img src="./images/lab6/python_orientation_handler.png" alt="Python BLE notification handler for orientation PID data">
+                        <figcaption>
+                            Python notification handler. The string format <code>"T:1234|Y:45|E:5|C:60"</code> 
+                            is split on <code>|</code> then <code>:</code> into a dictionary, and each field 
+                            is cast to the appropriate type before appending to its array.
+                        </figcaption>
+                    </figure>
                     <p>
                         The workflow from Jupyter is: <code>RESET_YAW</code> → <code>START_ORIENTATION_PID</code> 
                         → kick robot → <code>STOP_ORIENTATION_PID</code> → <code>SEND_ORIENTATION_PID_DATA</code> 
@@ -88,7 +86,7 @@
                     </p>
                 </div>
             </section>
- 
+
             <!-- ============================================================ -->
             <!--  PID INPUT SIGNAL                                             -->
             <!-- ============================================================ -->
@@ -98,22 +96,28 @@
                     <p>
                         Yaw is estimated by integrating the ICM-20948 gyroscope Z-axis reading over time:
                     </p>
-                    <pre><code>void updateGyroYaw() {
-    unsigned long now = millis();
-    dt = (now - last_time) / 1000.0;
-    last_time = now;
-    float gyro_z_corrected = myICM.gyrZ() - gyro_z_bias;
-    gyro_yaw += gyro_z_corrected * dt;
-}</code></pre>
+                    <figure>
+                        <img src="./images/lab6/arduino_update_gyro_yaw.png" alt="updateGyroYaw Arduino function">
+                        <figcaption>
+                            <code>updateGyroYaw()</code> computes <code>dt</code> from elapsed milliseconds, 
+                            subtracts the measured bias, and accumulates into <code>gyro_yaw</code>.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab6/arduino_calibrate_bias.png" alt="calibrateGyroBias Arduino function">
+                        <figcaption>
+                            <code>calibrateGyroBias()</code> averages 200 gyro Z samples taken at 
+                            startup while the robot is completely still. The result is stored in 
+                            <code>gyro_z_bias</code> and subtracted every integration step.
+                        </figcaption>
+                    </figure>
                     <p>
                         <strong>Drift from digital integration:</strong> Integrating a noisy signal accumulates 
                         error over time. Even a small constant bias of 0.1°/s becomes 6° of error after 
                         60 seconds. To mitigate this, I measure <code>gyro_z_bias</code> at startup by 
                         averaging 200 samples while the robot is completely still (~2 seconds). In testing, 
                         the measured bias was <strong>-0.09°/s</strong>, reducing residual drift to under 
-                        0.1°/s. For longer-term stability, the ICM-20948's onboard DMP (Digital Motion 
-                        Processor) would provide superior yaw estimation via sensor fusion, which I plan 
-                        to explore in future labs.
+                        0.1°/s.
                     </p>
                     <p>
                         <strong>Gyroscope range:</strong> The ICM-20948 default full-scale range is ±250°/s. 
@@ -123,7 +127,7 @@
                     </p>
                 </div>
             </section>
- 
+
             <!-- ============================================================ -->
             <!--  DERIVATIVE TERM                                              -->
             <!-- ============================================================ -->
@@ -138,27 +142,23 @@
                         <code>(error - prev_error)/dt</code> implementation would spike the derivative 
                         term. Using <code>-gyro_z</code> directly instead means setpoint changes never 
                         produce a kick, since the gyro only measures actual physical rotation.
+                        The full PID implementation (commented out for future use) is shown in Figure 2 
+                        in the Controller Implementation section.
                     </p>
-                    <pre><code>/* Full PID (not yet enabled):
-float gyro_z_corrected = myICM.gyrZ() - gyro_z_bias;
-orientation_control_speed = Kp*orientation_error 
-                           + Ki*orientation_sum_error 
-                           - Kd*gyro_z_corrected;
-*/</code></pre>
                     <p>
                         A low-pass filter on the gyro before the D term would further reduce noise 
                         amplification, but is not necessary for the P-only controller implemented here.
                     </p>
                 </div>
             </section>
- 
+
             <!-- ============================================================ -->
             <!--  CONTROLLER IMPLEMENTATION                                    -->
             <!-- ============================================================ -->
             <section class="project-section" id="controller">
                 <h2 class="section-title">Controller Implementation</h2>
                 <div class="section-content">
- 
+
                     <h3>PID Globals and P-Only Controller</h3>
                     <p>
                         I implemented a <strong>P-only controller</strong> as the starting point, with 
@@ -174,7 +174,7 @@ orientation_control_speed = Kp*orientation_error
                             terms are commented out and will be added in future labs.
                         </figcaption>
                     </figure>
- 
+
                     <h3>Future I and D Terms</h3>
                     <p>
                         The commented-out I and D implementation is shown below. Notably, the D term 
@@ -190,7 +190,7 @@ orientation_control_speed = Kp*orientation_error
                             <code>(error - prev_error)/dt</code>, avoiding derivative kick on setpoint changes.
                         </figcaption>
                     </figure>
- 
+
                     <h3>Motor Direction Debugging</h3>
                     <p>
                         During initial testing the robot spun continuously and never returned to the setpoint. 
@@ -232,7 +232,7 @@ orientation_control_speed = Kp*orientation_error
                             the motors once settled.
                         </figcaption>
                     </figure>
- 
+
                     <h3>Data Collection</h3>
                     <p>
                         To avoid slowing down the control loop, there are no blocking <code>delay()</code> 
@@ -249,7 +249,7 @@ orientation_control_speed = Kp*orientation_error
                             transmission happens here, data is sent in bulk only after the run completes.
                         </figcaption>
                     </figure>
- 
+
                     <h3>Python: Starting the Controller</h3>
                     <p>
                         Before each run, yaw is reset to zero to avoid accumulated drift between uploads. 
@@ -264,7 +264,7 @@ orientation_control_speed = Kp*orientation_error
                             setting the setpoint, to ensure a clean zero reference before motors start (The motor still moved a bit before declaring it's stop position as the setpoint 0°, but I'll debug this in future lab).
                         </figcaption>
                     </figure>
- 
+
                     <h3>Tuning: Kp = 0.1</h3>
                     <div class="video-container">
                         <iframe src="https://youtube.com/embed/xd-Bbr8BWfI"
@@ -273,7 +273,7 @@ orientation_control_speed = Kp*orientation_error
                             referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
                         <p>P controller with Kp = 0.1. Robot returns to setpoint after a kick, but very slowly.</p>
                     </div>
- 
+
                     <h3>Tuning: Kp = 1.0</h3>
                     <div class="video-container">
                         <iframe src="https://youtube.com/embed/j99eQkPF4kU"
@@ -282,7 +282,7 @@ orientation_control_speed = Kp*orientation_error
                             referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
                         <p>P controller with Kp = 1.0. Faster correction, still sluggish when pushed hard by hand.</p>
                     </div>
- 
+
                     <p>
                         At both Kp values, the robot corrects in the right direction but is noticeably 
                         slow when pushed gently by hand. This is expected from P-only control, the 
@@ -291,7 +291,7 @@ orientation_control_speed = Kp*orientation_error
                         at small errors, and Kd will improve settling speed. I also plan to add a 
                         Kalman filter for cleaner yaw estimation in a future lab.
                     </p>
- 
+
                     <h3>Data: Kp = 1.0 Run</h3>
                     <figure>
                         <img src="./images/lab6/data_collection.png" alt="Orientation PID data plot">
@@ -310,7 +310,7 @@ orientation_control_speed = Kp*orientation_error
                     </p>
                 </div>
             </section>
- 
+
             <!-- ============================================================ -->
             <!--  TOF SENSOR ISSUE                                             -->
             <!-- ============================================================ -->
@@ -337,11 +337,11 @@ orientation_control_speed = Kp*orientation_error
                         the IMU. However, I keep both sensors in the codebase for forward compatibility 
                         with later labs where combined distance and orientation control will be needed.
                     </p>
- 
+
                     <figure>
                         <img src="./images/lab6/issue_w_sensor_initialization.png" alt="ToF sensor initialization failure in Serial Monitor">
                         <figcaption>
-                            <strong>Figure 2.</strong> Serial Monitor showing the intermittent ToF 
+                            <strong>Figure 9.</strong> Serial Monitor showing the intermittent ToF 
                             Sensor 1 initialization failure ("Sensor 1 failed to begin. Please check 
                             wiring. Freezing...") on one upload, followed by successful initialization 
                             after unplugging and replugging the Qwiic cable.
@@ -349,7 +349,6 @@ orientation_control_speed = Kp*orientation_error
                     </figure>
                 </div>
             </section>
-
             <!-- ============================================================ -->
             <!--  REFERENCES                                                   -->
             <!-- ============================================================ -->
