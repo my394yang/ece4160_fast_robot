@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 7 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 7: Kalman Filter</h1>
+            </header>
+ 
+            <!-- ============================================================ -->
+            <!--  OBJECTIVE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The purpose of this lab is to implement a Kalman Filter to supplement the slowly-updating 
+                        ToF sensor with a faster state estimate, allowing the PID controller to run at a higher 
+                        effective rate. The VL53L1X ToF sensor is limited to ~10–20 Hz in practice, but the 
+                        Artemis control loop runs much faster. The Kalman Filter predicts the car's position 
+                        and velocity at every loop iteration using a state-space model of the car's dynamics, 
+                        and corrects that estimate each time a new ToF reading arrives. This way, the PID 
+                        controller always has a fresh, smooth position estimate to work with, even between 
+                        sensor updates.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  PART 1: ESTIMATE DRAG AND MOMENTUM                          -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="step-response">
+                <h2 class="section-title">Part 1: Estimate Drag and Momentum</h2>
+                <div class="section-content">
+                    <p>
+                        To build the state-space model, I need to estimate the drag coefficient <em>d</em> and 
+                        momentum term <em>m</em>. These come directly from a step response experiment: drive the 
+                        car toward a wall at a constant PWM input and observe how speed evolves over time.
+                    </p>
+ 
+                    <h3>Step Response Setup</h3>
+                    <p>
+                        I chose <strong>u = 150 PWM</strong> as the step input, which is approximately 59% of 
+                        the maximum PWM (255) and consistent with the PWM used in Lab 5, keeping the dynamics 
+                        comparable. I placed the car roughly 4 feet from the wall with a foam cushion as a 
+                        buffer. The ToF sensor was set to short-distance mode for a higher sampling rate (~20 Hz), 
+                        and the control loop was made non-blocking so the Artemis logs data as fast as sensor 
+                        readings arrive rather than blocking on each measurement.
+                    </p>
+                    <p>
+                        The step response Arduino code drives the car at a constant PWM, takes non-blocking ToF 
+                        readings, and auto-brakes when the car gets within <code>STOP_DISTANCE</code> of the wall:
+                    </p>
+                    <figure>
+                        <pre><code>void runStepResponse() {
+    if (sensor2.checkForDataReady()) {
+        distance2 = sensor2.getDistance();
+        sensor2.clearInterrupt();
+        sensor2.stopRanging();
+        sensor2.startRanging();
+ 
+        if (distance2 &lt; STOP_DISTANCE) {
+            stop();
+            step_running = false;
+            return;
+        }
+ 
+        if (arr_index &lt; ARRAY_SIZE) {
+            T_arr[arr_index]                 = millis();
+            Measured_distance_arr[arr_index] = distance2;
+            Control_speed_arr[arr_index]     = STEP_PWM;
+            arr_index++;
+        }
+    }
+    forward(STEP_PWM);
+}</code></pre>
+                        <figcaption>
+                            Non-blocking step response loop. <code>forward()</code> is called every iteration 
+                            regardless of sensor readiness, while data is only logged when a new reading arrives.
+                        </figcaption>
+                    </figure>
+ 
+                    <p>
+                        On the Python side, data is collected over BLE and saved immediately to a pickle file 
+                        so it persists across kernel restarts:
+                    </p>
+                    <figure>
+                        <pre><code>data = {"T": T_arr, "D": Distance_arr, "U": MotorInput_arr}
+with open("step_response.pkl", "wb") as f:
+    pickle.dump(data, f)
+ 
+# Load back after restart:
+with open("step_response.pkl", "rb") as f:
+    data = pickle.load(f)
+T_arr, Distance_arr, MotorInput_arr = data["T"], data["D"], data["U"]</code></pre>
+                        <figcaption>
+                            Saving and loading step response data using pickle, so the data survives kernel restarts.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Step Response Video</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/XQo1qAlVMec"
+                            title="Step Response"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>Step response run. Car drives toward wall at constant PWM 150, with foam buffer (backpack) to prevent damage.</p>
+                    </div>
+ 
+                    <h3>Step Response Graphs</h3>
+                    <p>
+                        The computed speed is derived from the ToF distance data as:
+                        <code>speed = -ΔDistance / Δtime</code> (negated because distance decreases as the car 
+                        moves forward). The motor input is a constant horizontal line at 150 PWM — this is the 
+                        step input u(t) that the car's dynamics respond to.
+                    </p>
+                    <p>
+                        The speed curve clearly shows the car accelerating from rest and approaching a plateau, 
+                        consistent with a first-order system reaching terminal velocity where motor force 
+                        balances drag. My car hit the foam buffer at approximately the 10th sample, so only 
+                        the first 10 samples (indices 0–9) are used for extracting steady-state speed.
+                    </p>
+ 
+                    <h3>Extracting d and m</h3>
+                    <p>
+                        From the pre-crash portion of the speed data, I extracted the three key values needed:
+                    </p>
+                    <figure>
+                        <pre><code>speed_clean = speed[:10]
+T_clean     = T_speed[:10]
+ 
+v_ss = np.mean(speed_clean[6:10])
+u    = 150
+ 
+d = u / v_ss
+ 
+v_90   = 0.9 * v_ss
+idx_90 = np.argmax(speed_clean >= v_90)
+t_90   = T_clean[idx_90]
+ 
+m = -d * t_90 / np.log(1 - 0.9)</code></pre>
+                        <figcaption>
+                            Computing drag <em>d</em> from steady-state speed and momentum <em>m</em> from 
+                            the 90% rise time. Only the pre-crash indices 0–9 are used.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        The resulting values are:
+                    </p>
+                    <ul>
+                        <li><strong>Steady-state speed v<sub>ss</sub></strong> = 2017.1 mm/s — the plateau 
+                            speed where motor force exactly balances drag</li>
+                        <li><strong>90% rise time t<sub>90%</sub></strong> = 0.6370 s — the time at which 
+                            speed reaches 90% of v<sub>ss</sub></li>
+                        <li><strong>Speed at 90% rise time v<sub>90%</sub></strong> = 1815.4 mm/s</li>
+                        <li><strong>d = u / v<sub>ss</sub></strong> = 150 / 2017.1 = <strong>0.0744</strong></li>
+                        <li><strong>m = &minus;d &middot; t<sub>90%</sub> / ln(1 &minus; 0.9)</strong> = <strong>0.0206</strong></li>
+                    </ul>
+                    <p>
+                        As a sanity check: the velocity decay time constant is m/d = 0.0206/0.0744 ≈ 0.277 s, 
+                        meaning if the motors were cut, speed would decay with a ~0.28 s time constant. 
+                        This is physically reasonable for a small lightweight RC car.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  PART 2: INITIALIZE KF (PYTHON)                              -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="kf-init">
+                <h2 class="section-title">Part 2: Initialize Kalman Filter (Python)</h2>
+                <div class="section-content">
+ 
+                    <h3>State-Space Model</h3>
+                    <p>
+                        The car's equation of motion is m&ddot;x; = u &minus; d&dot;x;, which rearranges to 
+                        &ddot;x; = &minus;(d/m)&dot;x; + (1/m)u. With state vector 
+                        x = [position, velocity]<sup>T</sup>, the continuous-time state-space matrices are:
+                    </p>
+                    <figure>
+                        <pre><code>A = np.array([[0,    1  ],
+              [0,  -d/m ]])   # system dynamics: how state evolves on its own
+ 
+B = np.array([[0  ],
+              [1/m]])          # input matrix: how PWM affects state</code></pre>
+                        <figcaption>
+                            Continuous-time A (2×2) and B (2×1). The top row of A encodes 
+                            ṗ = ṗ (trivially true), and the bottom row encodes the physics: 
+                            acceleration = &minus;(d/m)·velocity + (1/m)·u.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Discretization</h3>
+                    <p>
+                        The total step response run time was approximately 2 seconds with 21 samples, giving 
+                        an inter-sample interval of about 0.095 s. I use <strong>ΔT = 0.1 s</strong> as the 
+                        sampling time. Discretization uses the first-order Euler approximation:
+                        A<sub>d</sub> = I + ΔT·A and B<sub>d</sub> = ΔT·B.
+                    </p>
+                    <figure>
+                        <pre><code>Delta_T = 0.1
+n = 2
+Ad = np.eye(n) + Delta_T * A
+Bd = Delta_T * B</code></pre>
+                        <figcaption>
+                            First-order Euler discretization. A<sub>d</sub> is 2×2 and B<sub>d</sub> is 2×1, 
+                            matching the 2-dimensional state space (position and velocity) and scalar input (PWM).
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>C Matrix</h3>
+                    <p>
+                        The measurement matrix C maps the full state vector to what the ToF sensor can actually 
+                        observe. The ToF measures positive distance, but the state convention defines position 
+                        as <em>negative</em> distance from the wall (car moving toward wall is positive). 
+                        C = [&minus;1, 0] flips the sign to match: y = Cx = &minus;position = +distance.
+                        The zero in the second column reflects that velocity is never directly measured — 
+                        the Kalman Filter must estimate it.
+                    </p>
+                    <figure>
+                        <pre><code>C = np.array([[-1, 0]])</code></pre>
+                        <figcaption>
+                            C is 1×2 (m×n where m=1 sensor, n=2 states). If a second sensor measured 
+                            velocity directly, C would be 2×2.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>State Initialization and Noise Covariance</h3>
+                    <figure>
+                        <pre><code>TOF = np.array(Distance_arr)
+x   = np.array([[-TOF[0]], [0]])   # [negative distance, 0 velocity]
+ 
+sigma_1 = 20    # process noise: position uncertainty (mm)
+sigma_2 = 20    # process noise: velocity uncertainty (mm/s)
+sigma_3 = 20    # sensor noise: ToF measurement noise (mm)
+ 
+Sigma_u = np.array([[sigma_1**2, 0         ],
+                     [0,          sigma_2**2]])
+ 
+Sigma_z = np.array([[sigma_3**2]])</code></pre>
+                        <figcaption>
+                            State initialized to first ToF reading with zero velocity (car at rest). 
+                            Sigma_u (2×2) is process noise — how much we distrust the dynamics model. 
+                            Sigma_z (1×1) is sensor noise — how much we distrust the ToF reading.
+                            Their relative magnitudes determine how much the filter trusts the model 
+                            vs. the sensor.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Kalman Filter Function</h3>
+                    <figure>
+                        <pre><code>def kf(mu, sigma, u, y):
+    mu_p    = Ad.dot(mu) + Bd.dot(u)
+    sigma_p = Ad.dot(sigma.dot(Ad.T)) + Sigma_u
+ 
+    sigma_m = C.dot(sigma_p.dot(C.T)) + Sigma_z
+    kf_gain = sigma_p.dot(C.T.dot(np.linalg.inv(sigma_m)))
+ 
+    y_m   = y - C.dot(mu_p)
+    mu    = mu_p + kf_gain.dot(y_m)
+    sigma = (np.eye(n) - kf_gain.dot(C)).dot(sigma_p)
+ 
+    return mu, sigma</code></pre>
+                        <figcaption>
+                            Two-step Kalman Filter: predict (propagate state forward using model) 
+                            then update (correct prediction using sensor measurement). 
+                            The Kalman gain weights how much to trust the sensor vs. the model.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  PART 3: IMPLEMENT AND TEST KF IN JUPYTER                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="kf-jupyter">
+                <h2 class="section-title">Part 3: Implement and Test Kalman Filter (Jupyter)</h2>
+                <div class="section-content">
+                    <p>
+                        Before deploying to the Artemis, I tested the Kalman Filter in Python by running it 
+                        on the previously collected Lab 5 PID data. The filter runs on the raw ToF readings 
+                        offline, and the KF estimate is overlaid on the raw distance for comparison:
+                    </p>
+                    <figure>
+                        <pre><code>mu    = np.array([[-D[0]], [0]])
+sigma = np.eye(n)
+kf_positions = []
+ 
+for i in range(len(D)):
+    y         = np.array([[-D[i]]])
+    mu, sigma = kf(mu, sigma, u_k, y)
+    kf_positions.append(-mu[0, 0])</code></pre>
+                        <figcaption>
+                            Offline KF test loop. Each ToF sample is fed in as a measurement update; 
+                            the KF estimate is converted back to positive distance for plotting.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        The KF output (purple) is smoother than the raw ToF (blue) while still tracking 
+                        the same trajectory — confirming the filter parameters and sign conventions are correct 
+                        before moving to the Artemis.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  PART 4: KF ON ARTEMIS                                       -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="kf-artemis">
+                <h2 class="section-title">Part 4: Kalman Filter on the Artemis</h2>
+                <div class="section-content">
+                    <p>
+                        The Kalman Filter is implemented on the Artemis using the 
+                        <code>BasicLinearAlgebra</code> library. Unlike the offline Python test, the filter 
+                        now runs in real-time: the predict step executes every control loop iteration 
+                        (fast), while the update step only runs when a new ToF reading is available (slow, 
+                        ~20 Hz). This lets the PID controller use a continuously-updated state estimate 
+                        between sensor readings rather than waiting for the next ToF sample.
+                    </p>
+ 
+                    <h3>KF Predict and Update (Arduino)</h3>
+                    <figure>
+                        <pre><code>void kf_predict(float u_pwm) {
+    unsigned long now = millis();
+    float dt = (now - last_predict_time) / 1000.0f;
+    last_predict_time = now;
+    if (dt &lt;= 0 || dt &gt; 0.5) return;
+ 
+    Matrix&lt;2,2&gt; Ad = {1,      dt,
+                       0, 1 - (D_DRAG/M_MOM)*dt};
+    Matrix&lt;2,1&gt; Bd = {0, dt/M_MOM};
+ 
+    mu    = Ad * mu + Bd * u_pwm;
+    Sigma = Ad * Sigma * ~Ad + Sigma_u;
+}
+ 
+void kf_update(float tof_mm) {
+    Matrix&lt;1,1&gt; y_m     = {-tof_mm};
+    Matrix&lt;1,1&gt; sigma_m = C_mat * Sigma * ~C_mat + Sigma_z;
+    Matrix&lt;2,1&gt; kf_gain = Sigma * ~C_mat * Inverse(sigma_m);
+ 
+    mu = mu + kf_gain * (y_m - C_mat * mu);
+ 
+    Matrix&lt;2,2&gt; I_mat = {1, 0, 0, 1};
+    Sigma = (I_mat - kf_gain * C_mat) * Sigma;
+}
+ 
+float kf_distance() {
+    return -mu(0, 0);
+}</code></pre>
+                        <figcaption>
+                            <code>kf_predict()</code> recomputes A<sub>d</sub> and B<sub>d</sub> from the 
+                            actual elapsed time <code>dt</code>, giving accurate discretization even when 
+                            loop timing varies. <code>Eye&lt;2&gt;()</code> was replaced with an explicit 
+                            identity matrix to avoid a compiler error with this version of BasicLinearAlgebra.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>KF + PID Control Loop</h3>
+                    <figure>
+                        <pre><code>void runKFPIDController() {
+    kf_predict((float)abs(linear_control_speed));
+ 
+    if (sensor2.checkForDataReady()) {
+        distance2 = sensor2.getDistance();
+        sensor2.clearInterrupt();
+        sensor2.stopRanging();
+        sensor2.startRanging();
+ 
+        if (!kf_initialized) {
+            mu(0, 0)          = -(float)distance2;
+            mu(1, 0)          = 0;
+            last_predict_time = millis();
+            kf_initialized    = true;
+            return;
+        }
+        kf_update((float)distance2);
+    }
+ 
+    if (!kf_initialized) return;
+ 
+    float kf_dist = kf_distance();
+    if (kf_dist &lt; 0 || kf_dist &gt; 5000) kf_dist = (float)distance2;
+ 
+    linear_error         = (int)(kf_dist - LINEAR_SETPOINT);
+    linear_sum_error    += linear_error;
+    int derivative       = linear_error - linear_previous_error;
+    linear_control_speed = (int)(linear_Kp*linear_error
+                               + linear_Ki*linear_sum_error
+                               + linear_Kd*derivative);
+    linear_previous_error = linear_error;
+    linear_control_speed  = constrain(abs(linear_control_speed), MIN_SPEED, MAX_SPEED);
+ 
+    if (arr_index &lt; ARRAY_SIZE) {
+        T_arr[arr_index]                 = millis();
+        Measured_distance_arr[arr_index] = distance2;
+        KF_distance_arr[arr_index]       = (int)kf_dist;
+        Error_arr[arr_index]             = linear_error;
+        Control_speed_arr[arr_index]     = linear_control_speed;
+        arr_index++;
+    }
+ 
+    if (abs(linear_error) &lt; 20) {
+        stop();
+    } else if (linear_error &gt; 0) {
+        forward(linear_control_speed);
+    } else {
+        backward(linear_control_speed);
+    }
+}</code></pre>
+                        <figcaption>
+                            The full KF+PID loop. <code>kf_predict()</code> runs every iteration; 
+                            <code>kf_update()</code> only runs when <code>checkForDataReady()</code> is true. 
+                            The PID uses the KF estimate rather than raw ToF, giving smoother control 
+                            between sensor updates. Both raw ToF and KF estimate are logged for comparison.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Result: KF + PID at PWM 150</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/Tc3j7Tgxh4o"
+                            title="Kalman Filter + PID, PWM 150"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            KF + PID running on the Artemis at PWM 150 with Kp = 0.05, Ki = 0.0, Kd = 0.7. 
+                            The car drives toward the wall and stops at the 304 mm setpoint using the 
+                            Kalman Filter estimate as the PID input.
+                        </p>
+                    </div>
+                </div>
+            </section>
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2026/labs/Lab6.html" target="_blank">Lab 6 Instructions — Fast Robots @ Cornell</a></li>
+                        <li><a href="https://trevordales.github.io/MAE4190/lab7/" target="_blank">Trevor Dales's Lab 7 Report</a> (referenced for math and some code structure)</li>
+                        <li>Grammarly writing assistance is used to fix my report's grammar and sentence flow.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
