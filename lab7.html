@@ -116,13 +116,32 @@ T_arr, Distance_arr, MotorInput_arr = data["T"], data["D"], data["U"]</code></pr
                         </figcaption>
                     </figure>
  
+                    <h3>Initial Attempt: Long Distance Mode (141 inches)</h3>
+                    <p>
+                        My first attempt started 141 inches from the wall using long-distance ToF mode. 
+                        The sensor produced a large distance spike at the start (an unstable reading before 
+                        the sensor stabilized), and long-distance mode is limited to ~10 Hz, so only 21 samples 
+                        were collected over 2 seconds. The speed curve plateaued almost immediately, 
+                        suggesting the car reached steady state faster than the sensor could capture the ramp-up.
+                    </p>
+                    <figure>
+                        <img src="./images/lab7/fig3.png" alt="Initial step response at 141 inches, long distance mode">
+                        <figcaption>
+                            <strong>Figure 1.</strong> First step response attempt at 141 inches. The distance 
+                            spike at t≈0.15s is a bad sensor reading (physically impossible jump from ~800 to 
+                            3700 mm). The speed curve appears flat immediately — the car already reached 
+                            steady state before the sensor could capture the acceleration phase. 
+                            Switching to short-distance mode and starting closer fixed both issues.
+                        </figcaption>
+                    </figure>
+ 
                     <h3>Step Response Video</h3>
                     <div class="video-container">
                         <iframe src="https://www.youtube.com/embed/XQo1qAlVMec"
                             title="Step Response"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                             referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-                        <p>Step response run. Car drives toward wall at constant PWM 150, with foam buffer (backpack) to prevent damage.</p>
+                        <p>Step response run. Car drives toward wall at constant PWM 150, with foam buffer to prevent damage.</p>
                     </div>
  
                     <h3>Step Response Graphs</h3>
@@ -138,6 +157,15 @@ T_arr, Distance_arr, MotorInput_arr = data["T"], data["D"], data["U"]</code></pr
                         balances drag. My car hit the foam buffer at approximately the 10th sample, so only 
                         the first 10 samples (indices 0–9) are used for extracting steady-state speed.
                     </p>
+                    <figure>
+                        <img src="./images/lab7/fig1.png" alt="Step response: ToF distance and computed speed vs time">
+                        <figcaption>
+                            <strong>Figure 2.</strong> Step response at ~4 feet from wall, short-distance mode. 
+                            Top: ToF distance decreasing as car approaches wall. Middle: Computed speed rising 
+                            from 0 to ~2000 mm/s, then crashing at ~1.0s when the car hits the foam buffer. 
+                            Only indices 0–9 (before the crash) are used for extracting d and m.
+                        </figcaption>
+                    </figure>
  
                     <h3>Extracting d and m</h3>
                     <p>
@@ -160,6 +188,15 @@ m = -d * t_90 / np.log(1 - 0.9)</code></pre>
                         <figcaption>
                             Computing drag <em>d</em> from steady-state speed and momentum <em>m</em> from 
                             the 90% rise time. Only the pre-crash indices 0–9 are used.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab7/fig2.png" alt="Speed table: index, time (s), speed (mm/s) for all 20 samples">
+                        <figcaption>
+                            <strong>Figure 3.</strong> Computed speed at each sample midpoint. 
+                            Indices 0–9 show the forward acceleration phase used for extracting d and m. 
+                            Index 0 shows a small negative speed due to a noisy first ToF reading. 
+                            Indices 10 onward reflect the car bouncing off the foam buffer.
                         </figcaption>
                     </figure>
                     <p>
@@ -318,6 +355,16 @@ for i in range(len(D)):
                         the same trajectory — confirming the filter parameters and sign conventions are correct 
                         before moving to the Artemis.
                     </p>
+                    <figure>
+                        <img src="./images/lab7/fig4.png" alt="KF estimated distance vs raw ToF distance">
+                        <figcaption>
+                            <strong>Figure 4.</strong> Kalman Filter estimate (purple) overlaid on raw ToF 
+                            distance (blue) from a PID run. The KF output is noticeably smoother — the 
+                            staircase pattern of the slow 20 Hz ToF is replaced by a continuously interpolated 
+                            estimate. Both curves converge to the 304 mm setpoint, confirming the filter 
+                            is tracking correctly.
+                        </figcaption>
+                    </figure>
                 </div>
             </section>
  
