@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 8 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 8: Stunts</h1>
+            </header>
+ 
+            <!-- ============================================================ -->
+            <!--  OBJECTIVE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The purpose of this lab is to combine everything built in previous labs, motor
+                        control, ToF sensing, and the Kalman Filter, to execute a fast stunt. I chose
+                        Task A: Flip. The robot start at least 4 meters from the
+                        wall, drive forward at full speed, and upon reaching 1 foot from the wall,
+                        perform a flip and drive back past the starting line.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  CODE CHANGES FROM LAB 7                                     -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="code-changes">
+                <h2 class="section-title">Key Code Changes from Lab 7</h2>
+                <div class="section-content">
+                    <p>
+                        Lab 8 builds directly on the Lab 7 KF+PID codebase. The main additions are
+                        removing sensor 1 (see debugging section), adding the <code>runStunt()</code>
+                        function, and adding <code>PERFORM_STUNT</code> to the command enum.
+                    </p>
+ 
+                    <h3>Single Sensor Setup</h3>
+                    <p>
+                        After persistent sensor 1 initialization failures (see debugging section),
+                        I removed sensor 1 entirely. Sensor 2 is now the only ToF sensor,
+                        initialized directly at its default I2C address with no XSHUT pin manipulation:
+                    </p>
+                    <figure>
+                        <pre><code>SFEVL53L1X sensor2;
+int distance2 = 0;
+ 
+// In setup():
+if (sensor2.begin() != 0) {
+    Serial.println("Sensor 2 failed!");
+    while(1);
+}
+Serial.println("Sensor 2 OK!");
+sensor2.setDistanceModeShort();</code></pre>
+                        <figcaption>
+                            Single-sensor setup. With sensor 1 removed, sensor 2 stays at its
+                            default address 0x29 with no address reassignment or XSHUT toggling needed.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Stunt State Machine</h3>
+                    <p>
+                        The stunt runs as a two-phase state machine. Full-speed forward until the KF
+                        estimate drops below <code>STUNT_TRIGGER_DIST</code>, then full-speed reverse
+                        for <code>STUNT_REVERSE_MS</code> milliseconds. The PID controller is
+                        completely bypassed, with the car runs at constant 255 PWM in both directions.
+                        A raw ToF hard safety independently triggers reverse if the sensor reads
+                        below 400mm, catching cases where the KF hasn't initialized yet:
+                    </p>
+                    <figure>
+                        <pre><code>#define STUNT_TRIGGER_DIST 800
+#define STUNT_REVERSE_MS   800
+ 
+void runStunt() {
+    kf_predict(255.0f);
+ 
+    if (sensor2.checkForDataReady()) {
+        distance2 = sensor2.getDistance();
+        sensor2.clearInterrupt();
+        sensor2.stopRanging();
+        sensor2.startRanging();
+        if (!kf_initialized) {
+            mu(0, 0)          = -(float)distance2;
+            mu(1, 0)          = 0;
+            last_predict_time = millis();
+            kf_initialized    = true;
+            return;
+        }
+        kf_update((float)distance2);
+    }
+ 
+    if (distance2 > 0 && distance2 &lt; 400) {
+        backward(255);
+        stunt_phase_reversing = true;
+        stunt_reverse_timer   = millis();
+    }
+ 
+    if (!kf_initialized || distance2 == 0) return;
+ 
+    float kf_dist = kf_distance();
+    if (kf_dist &lt; 0 || kf_dist &gt; 5000) kf_dist = (float)distance2;
+ 
+    if (!stunt_phase_reversing) {
+        if (kf_dist &gt; STUNT_TRIGGER_DIST) {
+            forward(255);
+        } else {
+            stunt_phase_reversing = true;
+            stunt_reverse_timer   = millis();
+            backward(255);
+        }
+    } else {
+        if (millis() - stunt_reverse_timer &lt; STUNT_REVERSE_MS) {
+            backward(255);
+        } else {
+            stop();
+            stunt_running = false;
+            sensor2.stopRanging();
+        }
+    }
+}</code></pre>
+                        <figcaption>
+                            <code>runStunt()</code>. The KF predict step runs every iteration for
+                            continuous position estimation between slow ToF updates. The two-phase
+                            state machine (forward to reverse) is controlled by
+                            <code>stunt_phase_reversing</code>. cnstant 255 PWM
+                            in both directions was used to maximize momentum for the flip.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Updated Command Enum</h3>
+                    <figure>
+                        <pre><code>enum CommandTypes {
+    START_LINEAR_PID,
+    STOP_LINEAR_PID,
+    SEND_LINEAR_PID_DATA,
+    SET_LINEAR_PID_GAIN,
+    PERFORM_STUNT,
+    PERFORM_DRIFT,
+};</code></pre>
+                        <figcaption>
+                            <code>PERFORM_STUNT</code> (index 4) added to the command enum.
+                            The Python <code>CMD_lab8</code> enum in <code>cmd_types.py</code> mirrors these indices exactly.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Guard Against Uninitialized Distance</h3>
+                    <p>
+                        The main bug in earlier testing was that the car immediately drive backward on start
+                        because <code>distance2 = 0</code> before the first ToF reading arrived,
+                        making the PID error hugely negative. The fix is a guard that holds the car
+                        still until both the KF is initialized and a valid ToF reading exists:
+                    </p>
+                    <figure>
+                        <pre><code>if (!kf_initialized || distance2 == 0) return;</code></pre>
+                        <figcaption>
+                            Added to both <code>runKFPIDController()</code> and <code>runStunt()</code>.
+                            Prevents motor commands from running until the first real sensor reading
+                            has arrived and initialized the KF state.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  DEBUGGING                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="debugging">
+                <h2 class="section-title">Debugging</h2>
+                <div class="section-content">
+ 
+                    <h3>ToF Sensor Initialization Failures</h3>
+                    <p>
+                        Throughout this lab I continued to struggle with the bent Qwiic MultiPort
+                        lead issue first identified in Lab 6. The root cause is that one of the four
+                        I2C leads on my SparkFun Qwiic MultiPort was bent while plugging in a
+                        connector, leaving marginal contact. I bent it back with tweezers, but the
+                        repair was never reliable. After every recompile and upload, I had to
+                        physically unplug and replug the ToF sensor cables to get initialization
+                        to succeed.
+                    </p>
+                    <p>
+                        I have mentiooned this issue every recent report, but in Lab 8, the situation got worse: sensor 2 started failing to initialize
+                        consistently even after replugging, while sensor 1 initialized fine. Since
+                        sensor 1 is never used for distance measurement (all my code uses sensor 2),
+                        I resolved this by unplugging sensor 1's Qwiic cable entirely and
+                        removing all sensor 1 code. Sensor 2 then initializes at its default I2C
+                        address 0x29 with no conflicts and no XSHUT toggling required.
+                        The Serial Monitor now reliably prints <code>"Sensor 2 OK!"</code> on every boot.
+                    </p>
+ 
+                    <h3>Car Driving Backward on Start</h3>
+                    <p>
+                        On first testing, the car immediately drove backward when the stunt was
+                        triggered. The issue was that <code>distance2</code> starts at 0 before
+                        any ToF reading arrives, so <code>kf_dist = 0</code>, making
+                        <code>linear_error = 0 - 304 = -304</code> (negative), which triggers
+                        <code>backward()</code>. The fix was adding the
+                        <code>if (!kf_initialized || distance2 == 0) return;</code> guard described above.
+                    </p>
+ 
+                    <h3>Car Not Flipping - Attempt 1 (No Weight)</h3>
+                    <p>
+                        In the first attempt, the car drove forward and reversed at the trigger
+                        distance, but did not flip — it just skidded backward. The reverse duration
+                        of 800ms was not enough to generate sufficient angular momentum. I increased
+                        <code>STUNT_REVERSE_MS</code> but the car still did not flip.
+                    </p>
+ 
+                    <h3>Car Stopping After Adding Weight — Attempt 2</h3>
+                    <p>
+                        Following the lab instructions suggesting adding weight to the front to lower
+                        the center of mass and make flipping easier, I taped weight to the front of
+                        the car. However, the car then stopped after moving forward and never reached
+                        the wall. The added weight was too heavy and the motors could not overcome
+                        the increased rolling resistance at the deadband threshold. I removed the weight.
+                    </p>
+ 
+                    <h3>Successful Stunt - Attempt 3</h3>
+                    <p>
+                        After removing the weight, I tuned <code>STUNT_TRIGGER_DIST</code> and
+                        <code>STUNT_REVERSE_MS</code> and got the flip to work. The key insight
+                        was that the trigger distance needed to be set so the car is still moving
+                        at maximum speed when it reverses — triggering too early meant the car had
+                        already started to coast. With <code>STUNT_TRIGGER_DIST = 800</code> and
+                        <code>STUNT_REVERSE_MS = 800</code>, the flip executes consistently.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  STUNT VIDEOS                                                 -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="stunt-videos">
+                <h2 class="section-title">Stunt Attempts</h2>
+                <div class="section-content">
+ 
+                    <h3>Attempt 1: No Weight Added — Unsuccessful</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/7yZyPA06X6s"
+                            title="Stunt Attempt 1 - No Weight, Unsuccessful"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            First attempt with no weight added. The car drives forward at full speed,
+                            triggers the reverse at the correct distance, and quickly reverses — but
+                            does not generate enough angular momentum to flip. The car just skids
+                            backward without tipping over. The backward speed also is slower.
+                        </p>
+                    </div>
+ 
+                    <h3>Attempt 2: Weight Added to Front — Unsuccessful</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/8PWuA5tVPa4"
+                            title="Stunt Attempt 2 - Weight Added, Unsuccessful"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            Second attempt with weight taped to the front of the car. The car stops
+                            shortly after starting — the added weight increased rolling resistance past
+                            the motor deadband threshold, preventing forward motion. Weight was
+                            subsequently removed.
+                        </p>
+                    </div>
+ 
+                    <h3>Attempt 3: No Weight — Successful Flip</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/9mwjUoJ_0qk"
+                            title="Stunt Attempt 3 - Successful Flip"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            Successful flip with no weight added. The car drives forward at full 255 PWM,
+                            the KF triggers the reverse at 800mm from the wall, and the car flips. 
+                            After flipping, the car drives back in the direction it came from.
+                        </p>
+                    </div>
+ 
+                    <h3>Sensor Data During Successful Run</h3>
+                    <figure>
+                        <img src="./images/lab8/graph.png" alt="KF + PID sensor data during stunt run">
+                        <figcaption>
+                            <strong>Figure 1.</strong> Sensor data from the successful stunt run (117 samples,
+                            0.27s). Top: raw ToF (blue, nearly invisible behind KF estimate) and KF estimate
+                            (purple), both stay flat near 1600mm because the run was very short and the
+                            car was already close to the trigger when logging started. The KF estimate
+                            is notably smoother than the raw ToF. Middle: error sits at ~0 throughout because
+                            the stunt bypasses PID entirely. Bottom: constant 255 PWM confirms the car
+                            ran at full speed the entire time. The short 0.27s duration reflects how quickly
+                            the flip executes at full throttle.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2025/labs/Lab8.html" target="_blank">Lab 8 Instructions — Fast Robots @ Cornell</a></li>
+                        <li><a href="https://jcai2565.github.io/2025/04/07/lab8.html" target="_blank">Jeffery Cai's Lab 8 Report</a> (referenced for how Jeffery approach this task)</li>
+                        <li>Grammarly writing assistance is used to fix my report's grammar and sentence flow.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
