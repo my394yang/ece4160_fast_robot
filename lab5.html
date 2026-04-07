@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 5 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 5: Linear PID Control</h1>
+            </header>
+ 
+            <!-- ============================================================ -->
+            <!--  OBJECTIVE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The purpose of this lab is to implement PID position control on the robot.
+                        The robot must drive as fast as possible toward a wall and stop exactly
+                        1 foot (304mm) away using feedback from the ToF sensor. The solution must
+                        be robust to varying starting distances (2–4m).
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  PRELAB: BLE COMMUNICATION                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="prelab">
+                <h2 class="section-title">Prelab: Bluetooth Communication</h2>
+                <div class="section-content">
+                    <p>
+                        The BLE communication pipeline carries over from Labs 1–4. The Artemis
+                        collects timestamped distance, error, and control speed into arrays during
+                        the PID run, then sends all data over BLE after the run completes — avoiding
+                        any BLE overhead during the tight control loop.
+                        Four commands were added for Lab 5: <code>START_LINEAR_PID</code>,
+                        <code>STOP_LINEAR_PID</code>, <code>SEND_LINEAR_PID_DATA</code>, and
+                        <code>SET_LINEAR_PID_GAIN</code>.
+                    </p>
+                    <p>
+                        The <code>SET_LINEAR_PID_GAIN</code> command lets me update Kp, Ki, and Kd
+                        from Jupyter without reflashing, which was essential for rapid gain tuning:
+                    </p>
+                    <figure>
+                        <img src="./images/lab5/image11.png" alt="Arduino SET_LINEAR_PID_GAIN case handling">
+                        <figcaption>
+                            <strong>Figure 1.</strong> <code>SET_LINEAR_PID_GAIN</code> command handler.
+                            The Artemis parses the pipe-delimited string <code>"Kp|Ki|Kd"</code> and
+                            updates the global gain variables at runtime.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        On the Python side, gains are set immediately before starting the controller:
+                    </p>
+                    <figure>
+                        <img src="./images/lab5/image3.png" alt="Python cell setting PID gains">
+                        <figcaption>
+                            <strong>Figure 2.</strong> Python cell for setting gains over BLE before
+                            each run. This avoids reflashing the Artemis every time a gain is adjusted.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        A hard stop is implemented directly on the Artemis: when BLE disconnects,
+                        the <code>while(central.connected())</code> loop exits and <code>stop()</code>
+                        is called immediately, ensuring motors never run uncontrolled.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  DEBUGGING: WRONG SENSOR                                     -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="debugging-sensor">
+                <h2 class="section-title">Debugging: Wrong ToF Sensor</h2>
+                <div class="section-content">
+                    <p>
+                        Initially the PID didn't work at all, the distance readings were weird and
+                        the car didn't respond correctly. After some investigation, I discovered
+                        the root cause: I was using sensor 1 (the side-facing sensor) instead of
+                        sensor 2 (the front-facing sensor). I verified this by placing my hand in
+                        front of and beside each motor while watching the sensor readings.
+                    </p>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/wDKAt3UdVvQ"
+                            title="Testing which ToF sensor faces front"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>Testing which sensor is sensor 1 (front) vs sensor 2 (side) by blocking each with my hand.</p>
+                    </div>
+                    <p>
+                        Once I identified the issue, I switched the controller from <code>sensor1</code>
+                        to <code>sensor2</code>:
+                    </p>
+                    <figure>
+                        <img src="./images/lab5/image10.png" alt="Original controller using sensor1">
+                        <figcaption>
+                            <strong>Figure 3.</strong> Original <code>runLinearPIDController()</code>
+                            incorrectly reading from <code>sensor1</code> (the side sensor).
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab5/image12.png" alt="Updated controller using sensor2">
+                        <figcaption>
+                            <strong>Figure 4.</strong> Corrected version reading from <code>sensor2</code>
+                            (the front-facing sensor). The I and D terms are commented out for initial
+                            P-only testing.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        The Serial Monitor confirmed successful sensor initialization after unplugging
+                        and replugging the Qwiic cables (a recurring issue with my bent MultiPort connector):
+                    </p>
+                    <figure>
+                        <img src="./images/lab5/image6.png" alt="Serial monitor showing sensor 1 failure then success">
+                        <figcaption>
+                            <strong>Figure 5.</strong> Serial Monitor showing the typical initialization
+                            pattern: sensor 1 fails on the first boot, then succeeds after unplugging
+                            and replugging the Qwiic cable.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  PID CONTROLLER IMPLEMENTATION                               -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="controller">
+                <h2 class="section-title">PID Controller Implementation</h2>
+                <div class="section-content">
+ 
+                    <h3>P-Only Controller</h3>
+                    <p>
+                        I started with a P-only controller. The control law is:
+                        <code>u = Kp × (distance - 304)</code>.
+                        The output is clamped to [0, 255] and passed through the deadband mapping
+                        function from Lab 4 before being sent to the motors. A ±20mm deadzone stops
+                        the motors to prevent oscillation near the setpoint.
+                    </p>
+                    <figure>
+                        <img src="./images/lab5/image7.png" alt="Full runLinearPIDController function">
+                        <figcaption>
+                            <strong>Figure 6.</strong> Final <code>runLinearPIDController()</code>
+                            with the full PID implementation. The I and D terms are enabled;
+                            <code>constrain(abs(control_speed), MIN, MAX)</code> handles the output clamping,
+                            and the sign of the error determines forward vs. backward direction.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>P Gain Tuning</h3>
+                    <p>
+                        With Kp = 0.5 the car drove straight into the wall repeatedly, then bounced
+                        around the room before I stopped it from Python. Kp = 0.05 and Kp = 0.02
+                        still caused wall collisions — no matter how low Kp was, the car built up
+                        enough momentum from 2m away to overshoot. This was a momentum problem,
+                        not a Kp tuning problem.
+                    </p>
+                    <figure>
+                        <img src="./images/lab5/image5.png" alt="Kp=0.5 erratic result">
+                        <figcaption>
+                            <strong>Figure 7.</strong> Kp = 0.5: very weird behavior. Distance
+                            spikes to 4000mm after the car hits the wall and spins off-axis, then
+                            the controller chases the new (wrong) wall.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab5/image8.png" alt="Kp=0.5 still erratic">
+                        <figcaption>
+                            <strong>Figure 8.</strong> Another Kp = 0.5 run. The car bumped into the
+                            wall three times before I stopped it. The flat PWM plateau around 15000ms
+                            is the car chasing a different wall after spinning off-axis.
+                        </figcaption>
+                    </figure>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/IaNEA3lWCAc"
+                            title="Failed PID attempt crashing into wall"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>Failed P only attempt. Car drives into wall despite multiple Kp adjustments.</p>
+                    </div>
+ 
+                    <h3>Adding the D Term</h3>
+                    <p>
+                        The bump into the wall is a momentum/overshoot problem. The D term sees the
+                        rate of approach (error changing fast → apply braking force) and reduces speed
+                        before the car reaches the setpoint. I uncommented the I &amp; D block in
+                        the Arduino code and set Kd = 0.5 via the <code>SET_LINEAR_PID_GAIN</code>
+                        command:
+                    </p>
+                    <figure>
+                        <img src="./images/lab5/image4.png" alt="Python setting Kp=0.05, Kd=0.5">
+                        <figcaption>
+                            <strong>Figure 9.</strong> Jupyter cell setting Kp = 0.05, Ki = 0.0, Kd = 0.5.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab5/image9.png" alt="Serial monitor confirming Kd=0.5">
+                        <figcaption>
+                            <strong>Figure 10.</strong> Serial Monitor confirming the Artemis received
+                            Kp = 0.05, Ki = 0.0, Kd = 0.50 correctly.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        At Kd = 5 the robot rampaged across the room — this was caused by
+                        <strong>derivative kick</strong> on startup. When the PID starts from 2m away,
+                        <code>linear_previous_error = 0</code>, so on the very first iteration
+                        <code>derivative_error = 1700 - 0 = 1700</code>, giving
+                        <code>Kd × 1700 = 8500</code>, clamped to 255 immediately regardless of gain.
+                        Kd = 0.5 avoided this since the D contribution was small, and Kd = 1 produced
+                        some oscillation. The final working configuration is <strong>Kp = 0.05, Kd = 0.7</strong>.
+                    </p>
+ 
+                    <h3>Range and Sampling Rate Discussion</h3>
+                    <p>
+                        The ToF sensor is configured in long-distance mode (~10 Hz update rate) with
+                        a blocking read in the control loop. This means the control loop is bottlenecked
+                        at the sensor rate, approximately one iteration per 100ms. At 2m away and
+                        Kp = 0.05, the initial control output is <code>0.05 × 1700 = 85 PWM</code>,
+                        well above the deadband, so the car moves immediately. At low Kp values like
+                        0.02 the initial PWM can fall near or below the deadband threshold, causing
+                        a visible delay before the motors start. For Lab 7, the blocking read was
+                        replaced with a non-blocking approach to decouple the control loop rate from
+                        the sensor rate.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  RESULTS                                                      -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="results">
+                <h2 class="section-title">Results</h2>
+                <div class="section-content">
+ 
+                    <h3>Kp = 0.05, Kd = 0</h3>
+                    <figure>
+                        <img src="./images/lab5/image2.png" alt="Kp=0.02 P-only result">
+                        <figcaption>
+                            <strong>Figure 11.</strong> Kp = 0.02, P-only. Final distance 343mm,
+                            final error 39mm. The car approached slowly and stopped just outside
+                            the deadzone, with no wall collision, but settled above the setpoint.
+                            The low PWM (max ~30) caused a visible startup delay.
+                        </figcaption>
+                    </figure>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/gAlWlnJxjCY"
+                            title="P-only controller, didn't crash but didn't stop exactly at 1ft"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>P-only run. Car approaches and stops without crashing, but settles slightly above the 304mm setpoint.</p>
+                    </div>
+ 
+                    <h3>Kp = 0.05, Kd = 0.5 — Working PD Controller</h3>
+                    <figure>
+                        <img src="./images/lab5/image13.png" alt="Kp=0.05 Kd=0.5 clean settle">
+                        <figcaption>
+                            <strong>Figure 12.</strong> Kp = 0.05, Kd = 0.5 (295 samples, 29367ms).
+                            The car drives from ~2000mm, overshoots slightly to ~50mm, then settles
+                            cleanly at 293mm — within the ±20mm deadzone. Final error: −11mm.
+                            The D term damped the overshoot without oscillation.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab5/image1.png" alt="Kd=1 oscillating result">
+                        <figcaption>
+                            <strong>Figure 13.</strong> Kd = 1 produced oscillation — the car bounced
+                            back and forth before settling at 302mm (final error −2mm). The robot
+                            ended up under a desk leg which stopped it. Note the distance spike to
+                            1200mm around 8000ms — this is the car bouncing off the wall and pointing
+                            briefly at a different surface.
+                        </figcaption>
+                    </figure>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/fBYrcFPduB0"
+                            title="Successful PD controller run"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            Successful PD run with Kp = 0.05, Kd = 0.7. The car drives to the wall
+                            and stops at approximately 1ft away. This is a partial implementation
+                            (blocking sensor reads), but demonstrates working position control.
+                        </p>
+                    </div>
+ 
+                    <h3>Step Response for Lab 7</h3>
+                    <p>
+                        As preparation for Lab 7's Kalman Filter, I collected a step response by
+                        driving the car at constant 150 PWM toward my backpack (used as a foam buffer)
+                        and logging the ToF distance and timestamps:
+                    </p>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/tMYr6q2GOPA"
+                            title="Step response collection with backpack buffer"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>Step response collection. Constant 150 PWM toward wall, backpack used as cushion.</p>
+                    </div>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  KNOWN ISSUES AND FUTURE WORK                                -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="future-work">
+                <h2 class="section-title">Known Issues and Future Work</h2>
+                <div class="section-content">
+                    <p>
+                        Two issues remain to be addressed in future labs:
+                    </p>
+                    <p>
+                        <strong>Derivative kick on startup:</strong> When the PID starts from far away,
+                        <code>linear_previous_error</code> is initialized to 0, so the first derivative
+                        term is enormous (error = ~1700, derivative = 1700 on the first step). This
+                        causes a large initial PWM spike regardless of Kd. The fix is to initialize
+                        <code>linear_previous_error</code> to the first real sensor reading rather
+                        than 0.
+                    </p>
+                    <p>
+                        <strong>Off-axis recovery:</strong> After hitting the wall, the car bounces
+                        and spins off-axis. The ToF now reads a large distance (different wall or
+                        open room) and the controller drives forward at full speed toward the new surface.
+                        The fix is a sanity check: if distance jumps from ~300mm to above 2000mm
+                        suddenly, the car has spun off-axis and the controller should stop immediately
+                        rather than chase a new target.
+                    </p>
+                </div>
+            </section>
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2026/labs/Lab5.html" target="_blank">Lab 5 Instructions — Fast Robots @ Cornell</a></li>
+                        <li><a href="https://jcai2565.github.io/2025/03/11/lab5.html" target="_blank">Jeffrey Cai's Lab 5 Report</a> (referenced for some code structure and data collection structure)</li>
+                        <li>Grammarly writing assistance is used to fix my report's grammar and sentence flow.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
