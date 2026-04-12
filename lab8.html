@@ -297,14 +297,16 @@ void runStunt() {
                     <figure>
                         <img src="./images/lab8/graph.png" alt="KF + PID sensor data during stunt run">
                         <figcaption>
-                            <strong>Figure 1.</strong> Sensor data from the successful stunt run (117 samples,
-                            0.27s). Top: raw ToF (blue, nearly invisible behind KF estimate) and KF estimate
-                            (purple), both stay flat near 1600mm because the run was very short and the
-                            car was already close to the trigger when logging started. The KF estimate
-                            is notably smoother than the raw ToF. Middle: error sits at ~0 throughout because
-                            the stunt bypasses PID entirely. Bottom: constant 255 PWM confirms the car
-                            ran at full speed the entire time. The short 0.27s duration reflects how quickly
-                            the flip executes at full throttle.
+                            <strong>Figure 1.</strong> Sensor data from the successful stunt run (500 samples, 1.57s).
+                            Top: KF estimate (purple) — raw ToF is nearly identical and hidden behind it — shows the
+                            car starting ~2250mm from the wall and approaching steadily. The staircase pattern reflects
+                            the ~20Hz ToF update rate, with the KF interpolating smoothly between readings. The distance
+                            crosses the 304mm setpoint at ~1.0s and continues to ~84mm before the car bounces back slightly.
+                            Middle: error is flat at 0 throughout — this is expected since the stunt bypasses PID entirely
+                            and the error array is zeroed out in <code>runStunt()</code>.
+                            Bottom: PWM is +255 (full forward) from 0 to ~1.05s, then instantly flips to −255 (full reverse)
+                            when the KF estimate triggers the flip at the <code>STUNT_TRIGGER_DIST</code> threshold.
+                            The car reverses for the remaining ~0.5s, which is what executes the flip.
                         </figcaption>
                     </figure>
                 </div>
