@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 9 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 9: Mapping</h1>
+            </header>
+ 
+
+            <!-- ============================================================ -->
+            <!--  OBJECTIVE                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The goal of this lab is to build a static map of a "room" by placing the robot
+                        at several marked positions and having it perform an on-axis 360° rotation,
+                        taking ToF distance readings at fixed angular increments. Each scan produces
+                        a polar distance profile centered on that position. Scans from all positions
+                        are then merged into a single global map using transformation matrices.
+                    </p>
+                    <p>
+                        The lab uses five marked positions in the map room: (-3, -2), (-3, 2), (0, 0),
+                        (5, -3), and (5, 3) in feet. Due to robot hardware failures mid-session,
+                        I was only able to collect usable data from two of the five positions:
+                        <strong>(-3, 2)</strong> and <strong>(5, -3)</strong>. The remaining three
+                        are planned for a follow-up session once the hardware is debugged.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  CONTROL SYSTEM DESIGN                                        -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="control-system">
+                <h2 class="section-title">Control System Design</h2>
+                <div class="section-content">
+                    <p>
+                        The robot performs its 360° scan using <strong>closed-loop orientation PID</strong>
+                        on the gyroscope-integrated yaw angle. Only the rotation is closed-loop — the data
+                        collection timing is open-loop, driven by fixed sleep intervals in Python. The
+                        ToF sensor runs continuously in the background and its most recent reading is
+                        logged when the robot settles at each target angle.
+                    </p>
+ 
+                    <h3>Orientation PID Controller</h3>
+                    <p>
+                        The controller is P-only, using integrated gyro yaw as the process variable and
+                        differential drive (one motor forward, one backward) as the control output.
+                        A <code>YAW_DEADZONE</code> of ±5° defines the settled region. A minimum PWM
+                        floor of 80 ensures the motors always overcome static friction when a correction
+                        is needed, since P-only control produces very low output near the setpoint
+                        where the proportional term alone may fall below the motor deadband.
+                    </p>
+                    <figure>
+                        <pre><code>#define YAW_DEADZONE 5.0    // degrees — settled if |error| < 5°
+float orientation_Kp = 6.0;
+ 
+void runOrientationPIDController() {
+    if (myICM.dataReady()) {
+        myICM.getAGMT();
+        updateGyroYaw();
+    }
+ 
+    orientation_error = orientation_setpoint - gyro_yaw;
+    orientation_control_speed = orientation_Kp * abs(orientation_error);
+    orientation_control_speed = constrain(orientation_control_speed, MIN_SPEED, MAX_SPEED);
+ 
+    if (abs(orientation_error) < YAW_DEADZONE) {
+        stop();
+        // log one reading per setpoint
+        if (!angle_read_already && arr_index < ARRAY_SIZE) {
+            T_arr[arr_index]                 = millis();
+            Yaw_arr[arr_index]               = gyro_yaw;
+            Measured_distance_arr[arr_index] = distance2;
+            arr_index++;
+            angle_read_already = true;
+        }
+    } else {
+        // minimum speed floor to overcome static friction
+        orientation_control_speed = max(orientation_control_speed, 80.0f);
+        if (orientation_error > 0) rotateCCW(orientation_control_speed);
+        else                       rotateCW(orientation_control_speed);
+    }
+}</code></pre>
+                        <figcaption>
+                            Orientation PID controller. The <code>angle_read_already</code> flag
+                            ensures exactly one ToF reading is logged per setpoint. It is cleared
+                            whenever <code>SET_ORIENTATION_SETPOINT</code> is received, so the robot
+                            logs a fresh reading each time the target angle changes.
+                            The minimum speed floor of 80 PWM prevents the robot from stalling
+                            short of the target when the error is small and <code>Kp × error</code>
+                            would otherwise fall below the motor deadband.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Sensor Setup</h3>
+                    <p>
+                        The ToF sensor (VL53L1X sensor 2) is configured in <strong>long distance mode</strong>
+                        for this lab, since the room dimensions require readings up to ~4 meters. The gyro
+                        bias is calibrated on every boot by averaging 200 samples while the robot is still.
+                    </p>
+                    <figure>
+                        <pre><code>// ToF — long distance mode for room-scale mapping
+sensor2.setDistanceModeLong();
+ 
+// Gyro bias calibration at startup (robot must be still)
+void calibrateGyroBias() {
+    float sum = 0.0;
+    for (int i = 0; i < 200; i++) {
+        while (!myICM.dataReady()) { delay(1); }
+        myICM.getAGMT();
+        sum += myICM.gyrZ();
+        delay(10);
+    }
+    gyro_z_bias = sum / 200;
+}
+ 
+// In START_MAPPING: reset dt reference to prevent first-step spike
+last_time = millis();</code></pre>
+                        <figcaption>
+                            Long distance mode is required to measure walls 3–4 meters away.
+                            The <code>last_time = millis()</code> reset inside the
+                            <code>START_MAPPING_360_ROTATION</code> command handler prevents a large
+                            spurious dt on the first gyro integration step, which would cause the
+                            yaw estimate to jump by tens of degrees before the robot moves.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Command Enum</h3>
+                    <figure>
+                        <pre><code>enum CommandTypes {
+    START_MAPPING_360_ROTATION,  // 0 — start PID, reset arr_index
+    STOP_MAPPING_360_ROTATION,   // 1 — stop motors
+    SEND_MAPPING_DATA,           // 2 — BLE transmit all logged readings
+    SET_ORIENTATION_SETPOINT,    // 3 — update target yaw, reset angle_read_already
+    RESET_YAW,                   // 4 — zero gyro_yaw and setpoint
+};</code></pre>
+                        <figcaption>
+                            The Python <code>CMD_lab9</code> enum mirrors these indices exactly.
+                            A previous bug where the Python enum had values offset by one caused
+                            every <code>SET_ORIENTATION_SETPOINT</code> to be interpreted as
+                            <code>RESET_YAW</code>, resetting the robot to 0° after every 25°
+                            increment — which is why the robot only completed the first turn.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Python Scan Sequence</h3>
+                    <figure>
+                        <pre><code>ble.send_command(CMD_lab9.RESET_YAW, "")
+ble.send_command(CMD_lab9.START_MAPPING_360_ROTATION, "")
+time.sleep(4.5)                          # settle at 0°
+ 
+for angle in range(25, 375, 25):         # 25° to 350° in 25° steps
+    ble.send_command(CMD_lab9.SET_ORIENTATION_SETPOINT, f"{float(angle)}")
+    time.sleep(4.5)                      # wait to settle + log
+ 
+ble.send_command(CMD_lab9.STOP_MAPPING_360_ROTATION, "")
+time.sleep(1.0)
+ble.send_command(CMD_lab9.SEND_MAPPING_DATA, "")</code></pre>
+                        <figcaption>
+                            Python scan sequence. The 4.5s sleep per setpoint accounts for rotation
+                            time (~1–2s for close angles) plus margin for the motor to settle.
+                            All 15 setpoints take ~70 seconds total. Data is stored on the Artemis
+                            and transmitted after the full rotation is complete.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  DEBUGGING                                                    -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="debugging">
+                <h2 class="section-title">Debugging</h2>
+                <div class="section-content">
+                    <p>
+                        Lab 9 involved an unusually long debugging journey. The rotation
+                        control itself worked correctly in early testing (Video 1 shows the robot
+                        completing a clean 360° rotation on a lab table in 25° increments), but
+                        I broke the code while adding data collection and did not push the working
+                        version to GitHub. Recovering reliable end-to-end behavior — rotation,
+                        logging, and BLE transmission — required working through several
+                        independent bugs in sequence.
+                    </p>
+ 
+                    <h3>Bug 1: Python Enum Mismatch</h3>
+                    <p>
+                        The most impactful early bug was a mismatch between the Arduino and Python
+                        command enums. The Python <code>CMD_lab9</code> had its values offset by one
+                        starting from <code>STOP_MAPPING_360_ROTATION</code>:
+                    </p>
+                    <figure>
+                        <pre><code># Broken Python enum (values mismatched):
+class CMD_lab9(Enum):
+    START_MAPPING_360_ROTATION = 0  # correct
+    STOP_MAPPING_360_ROTATION  = 2  # wrong — should be 1
+    SEND_MAPPING_DATA          = 3  # wrong — should be 2
+    SET_ORIENTATION_SETPOINT   = 4  # wrong — should be 3
+    RESET_YAW                  = 5  # wrong — should be 4</code></pre>
+                        <figcaption>
+                            With this mismatch, every <code>SET_ORIENTATION_SETPOINT</code> command
+                            sent value 4, which Arduino interprets as <code>RESET_YAW</code>.
+                            The robot would turn to 25°, receive a "reset yaw" and snap back to 0°,
+                            then turn to 25° again — producing only one or two readings instead of 15.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Bug 2: Serial.print() Flooding BLE</h3>
+                    <p>
+                        After fixing the enum, the robot still behaved erratically — spinning fast,
+                        then slowly, then fast again. The cause was debug <code>Serial.print()</code>
+                        statements left active inside <code>runOrientationPIDController()</code>.
+                        Printing on every loop iteration blocked the loop long enough to corrupt
+                        <code>dt</code> in <code>updateGyroYaw()</code> — the gyro integration uses
+                        <code>millis()</code> to compute elapsed time, so Serial blocking caused
+                        <code>dt</code> to spike, making the integrated yaw accumulate 10–20° of
+                        spurious rotation per second. Removing all in-loop prints fixed both the
+                        erratic motion and the gyro drift.
+                    </p>
+ 
+                    <h3>Bug 3: Zero Data Points Received</h3>
+                    <p>
+                        Even with correct motion, <code>SEND_MAPPING_DATA</code> consistently
+                        returned 0 data points. The root cause was that the notification handler
+                        was registered on <code>RX_STRING</code> — the channel Python uses to send
+                        <em>commands to</em> the Artemis — instead of <code>TX_STRING</code>, which is
+                        the channel the Artemis uses to send data <em>back</em> to Python. However,
+                        because earlier labs had used <code>RX_STRING</code> for notifications and
+                        they worked, the real issue turned out to be something else: the notification
+                        handler was registered correctly, but <code>arr_index</code> was 0 when
+                        <code>SEND_MAPPING_DATA</code> ran, meaning nothing had been logged.
+                        This led to the next bug.
+                    </p>
+ 
+                    <h3>Bug 4: Settle Timer Preventing Logging</h3>
+                    <p>
+                        The data logging used a 300ms settle timer: the robot had to remain within
+                        the <code>YAW_DEADZONE</code> continuously for 300ms before a reading was
+                        logged. Because the robot oscillated slightly around the setpoint with P-only
+                        control, it would briefly exit the deadzone, resetting the timer to zero.
+                        It never accumulated the full 300ms and <code>arr_index</code> stayed at 0.
+                        Removing the settle timer entirely and logging on the <em>first</em> deadzone
+                        entry solved this:
+                    </p>
+                    <figure>
+                        <pre><code>// Before: settle timer caused zero readings
+if (!angle_read_already && (millis() - settled_since > SETTLE_MS) && arr_index < ARRAY_SIZE)
+ 
+// After: log immediately on first deadzone entry
+if (!angle_read_already && arr_index < ARRAY_SIZE)</code></pre>
+                        <figcaption>
+                            Since <code>stop()</code> is called the instant the robot enters the
+                            deadzone, there is no need to wait — the robot is physically stopped
+                            at that moment. The settle timer was causing more problems than it solved.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Bug 5: Multiple Readings Per Setpoint</h3>
+                    <p>
+                        After removing the settle timer, the robot correctly logged a reading on
+                        first entry into the deadzone. But it then logged 3–4 more readings at the
+                        same angle before the next setpoint arrived, because the robot oscillated
+                        just outside the deadzone, which reset <code>angle_read_already = false</code>
+                        in the else branch. The fix was removing that reset — <code>angle_read_already</code>
+                        now only resets when a new setpoint is sent via <code>SET_ORIENTATION_SETPOINT</code>:
+                    </p>
+                    <figure>
+                        <pre><code>// Removed from else branch:
+// angle_read_already = false;  ← was causing re-logging
+ 
+// SET_ORIENTATION_SETPOINT now handles the reset:
+case SET_ORIENTATION_SETPOINT:
+    orientation_setpoint = new_setpoint;
+    angle_read_already = false;   // ← reset here only
+    break;</code></pre>
+                        <figcaption>
+                            This ensures at most one reading per commanded setpoint regardless of
+                            how many times the robot briefly exits and re-enters the deadzone.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Bug 6: Motors Stalling Short of Target</h3>
+                    <p>
+                        With P-only control and <code>Kp = 6</code>, the PWM output at 5–8° error is
+                        30–48, which after <code>applyDeadband()</code> maps to ~115–130 — barely above
+                        the deadband. Once the robot stops, static friction requires more torque to
+                        restart than to keep moving, so the robot would stall a few degrees short.
+                        A fully charged battery improved this (higher voltage → more torque at the
+                        same PWM), and a minimum speed floor of 80 PWM eliminated stalling entirely.
+                    </p>
+                    <figure>
+                        <pre><code>} else {
+    // minimum speed floor to overcome static friction
+    orientation_control_speed = max(orientation_control_speed, 80.0f);
+    if (orientation_error > 0) rotateCCW(orientation_control_speed);
+    else                       rotateCW(orientation_control_speed);
+}</code></pre>
+                        <figcaption>
+                            With a fully charged battery and the 80 PWM floor, the robot reliably
+                            reaches each target angle without stalling. Running on a partially
+                            discharged battery required increasing the floor to 100, but caused
+                            overshooting — battery level significantly affects tuning.
+                        </figcaption>
+                    </figure>
+ 
+                    <h3>Serial Monitor Timing Issue</h3>
+                    <p>
+                        Because the USB cable must be disconnected to allow free rotation, the
+                        Serial Monitor is unavailable during actual mapping runs. Several debugging
+                        sessions were wasted because debug prints were only visible when the cable was
+                        connected, but the robot misbehaved only when free to rotate without the cable.
+                        The solution was to re-add temporary debug prints to <code>runOrientationPIDController()</code>,
+                        run a tethered test with restricted rotation, verify behavior, then remove
+                        the prints before the real untethered scan.
+                    </p>
+ 
+                    <h3>Initial Rotation Test (Video 1)</h3>
+                    <p>
+                        Before adding data collection, the rotation system worked correctly.
+                        Video 1 shows the robot completing a clean 360° rotation on a lab table
+                        in 25° increments — the original working version that was subsequently
+                        broken while integrating data collection.
+                    </p>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/8ey-9JV7YV0"
+                            title="Lab 9 - Initial 360° Rotation Test on Table"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            Initial rotation test on a lab table showing clean 25° increments over a full
+                            360°. This was the working version before data collection was added. The code
+                            was not pushed to GitHub before the next changes broke it.
+                        </p>
+                    </div>
+ 
+                    <h3>Final Achieved State</h3>
+                    <p>
+                        After resolving all bugs, the robot typically logs 8–9 readings per run out of
+                        the target 15. The remaining missed readings are due to gyro drift accumulating
+                        over the ~70-second scan — by 200°+ the integrated yaw can be off by 10–15°,
+                        so the robot thinks it has reached the setpoint but physically hasn't entered
+                        the deadzone. The Serial Monitor output below shows a representative run with
+                        8 successfully logged readings.
+                    </p>
+                    <figure>
+                        <img src="./images/lab9/image1.png" alt="Serial monitor output showing 8 logged readings">
+                        <figcaption>
+                            <strong>Figure 1.</strong> Serial Monitor output from a representative mapping run.
+                            8 of 15 setpoints produced logged readings. The robot successfully settled at
+                            0°, 20°, 45°, 170°, 245°, 270°, 295°, and 320° — the remaining setpoints
+                            (75°–150°, 200°–225°, 350°) timed out within the 4.5s window due to slow
+                            convergence from gyro drift and static friction at larger accumulated angles.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  MAPPING RESULTS                                              -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="mapping-results">
+                <h2 class="section-title">Mapping Results</h2>
+                <div class="section-content">
+                    <p>
+                        Scans were attempted at all five marked positions. The robot produced usable
+                        data from two positions before hardware issues (suspected low battery or loose
+                        wiring) caused it to stop mid-run. All reported angles are <em>relative</em>
+                        to the robot's starting orientation at that position — not absolute compass
+                        headings. Merging these scans into a global frame will require applying
+                        rotation transformation matrices to account for each robot's initial heading.
+                    </p>
+ 
+                    <!-- ===================== POSITION (-3, 2) ===================== -->
+                    <h3>Position (-3, 2) ft</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/6q-rP09BohU"
+                            title="Lab 9 Mapping - Position (-3, 2)"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            Mapping run at position (-3, 2). The robot completes most of the 360° scan,
+                            settling at 9 of the 15 setpoints.
+                        </p>
+                    </div>
+                    <figure>
+                        <img src="./images/lab9/image4.png" alt="Time series plot for (-3,2) — 9 readings">
+                        <figcaption>
+                            <strong>Figure 2.</strong> Time series for position (-3, 2), 9 readings over ~67 seconds.
+                            Top: yaw increases steadily from 0° to ~340°, with each logged reading (blue dot)
+                            corresponding to a settled setpoint. The spacing becomes less uniform at higher
+                            angles due to gyro drift increasing steady-state error.
+                            Bottom: ToF distances range from ~600mm to ~1800mm,
+                            peaking near 27s (~120° heading) where the robot faces the open end of the space.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab9/image9.png" alt="Polar map for (-3,2) — 9 readings">
+                        <figcaption>
+                            <strong>Figure 3.</strong> Polar distance map for position (-3, 2), 9 readings.
+                            Short distances (~250mm) at 0° and ~200° correspond to nearby walls.
+                            The long spike (~1750mm) near 120° points toward the open corridor.
+                            Distances near 270°–290° (~700mm) and 145°–165° are consistent with
+                            room geometry. The data is relative to robot heading at start, not
+                            absolute north.
+                        </figcaption>
+                    </figure>
+ 
+                    <!-- ===================== POSITION (5, -3) ===================== -->
+                    <h3>Position (5, -3) ft</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/l9mr544O2Bc"
+                            title="Lab 9 Mapping - Position (5, -3)"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            Mapping run at position (5, -3). 6 readings logged due to continued gyro
+                            drift issues and motor stalling at higher accumulated angles.
+                        </p>
+                    </div>
+                    <figure>
+                        <img src="./images/lab9/image5.png" alt="Time series and raw data for (5,-3) — 6 readings">
+                        <figcaption>
+                            <strong>Figure 4.</strong> Time series and raw data for position (5, -3), 6 readings over ~68 seconds.
+                            Raw logged values: yaw = [0.0°, 20.0°, 120.2°, 170.0°, 270.2°, 345.0°],
+                            distance = [0, 446, 399, 1991, 1284, 493] mm.
+                            The 0mm first reading reflects the ToF not having a valid measurement at t=0
+                            before the sensor was fully initialized. The large spike at 170° (~1991mm)
+                            points toward an open area of the space.
+                        </figcaption>
+                    </figure>
+                    <figure>
+                        <img src="./images/lab9/image7.png" alt="Polar map for (5,-3) — 6 readings">
+                        <figcaption>
+                            <strong>Figure 5.</strong> Polar distance map for position (5, -3), 6 readings.
+                            With only 6 points, the coverage is sparse, but the large open reading at ~170°
+                            and short readings at ~120° and ~345° are directionally consistent with the
+                            room geometry at this position. The 0mm reading at 0° is discarded as a
+                            sensor initialization artifact.
+                        </figcaption>
+                    </figure>
+ 
+                    <!-- ===================== POSITION (5, 3) — FAILED ===================== -->
+                    <h3>Position (5, 3) ft — Robot Stopped</h3>
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/hj-_Dn105hA"
+                            title="Lab 9 Mapping - Position (5, 3) — Robot Stopped"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        <p>
+                            Mapping attempt at position (5, 3). The robot stops moving partway through
+                            the scan, likely due to low battery or a loose wire. The ToF also returns
+                            near-zero distances for most readings, indicating a sensor malfunction.
+                        </p>
+                    </div>
+                    <figure>
+                        <img src="./images/lab9/image8.png" alt="Time series for (5,3) — failed run">
+                        <figcaption>
+                            <strong>Figure 6.</strong> Time series for position (5, 3). Although 8 readings
+                            were logged, the ToF distances are 0–50mm throughout — clearly erroneous for a
+                            room-scale scan. The most likely cause is a disconnected or poorly seated Qwiic
+                            cable on the ToF sensor, reverting it to measuring extremely short distances.
+                            This data is not usable for mapping.
+                        </figcaption>
+                    </figure>
+ 
+                    <!-- ===================== POSITIONS NOT ATTEMPTED ===================== -->
+                    <h3>Positions (-3, -2) and (0, 0) — Not Attempted</h3>
+                    <p>
+                        After the (5, 3) failure, the robot did not resume reliable operation within
+                        the available lab time. Positions (-3, -2) and (0, 0) were not scanned.
+                        These are planned for a follow-up session.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  COORDINATE TRANSFORMATION NOTE                              -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="transformation">
+                <h2 class="section-title">Coordinate Transformation</h2>
+                <div class="section-content">
+                    <p>
+                        Each scan produces distance readings in the robot's local polar frame: angle
+                        is measured from the robot's starting heading (0° = direction it was pointing
+                        when <code>RESET_YAW</code> was sent), and radius is the ToF distance.
+                        To merge scans from multiple positions into a single global map, each reading
+                        must be transformed into global Cartesian coordinates using:
+                    </p>
+                    <figure>
+                        <pre><code># For each (angle_deg, dist_mm) reading at robot position (rx, ry) ft,
+# with robot starting heading offset theta_0 (degrees from global +x axis):
+ 
+import numpy as np
+ 
+def to_global(rx_ft, ry_ft, theta_0_deg, angle_deg, dist_mm):
+    dist_ft = dist_mm / 304.8  # mm → feet
+    # total angle in global frame
+    global_angle_rad = np.deg2rad(angle_deg + theta_0_deg)
+    gx = rx_ft + dist_ft * np.cos(global_angle_rad)
+    gy = ry_ft + dist_ft * np.sin(global_angle_rad)
+    return gx, gy</code></pre>
+                        <figcaption>
+                            <code>theta_0_deg</code> is the robot's initial heading at each position
+                            relative to the global coordinate frame (estimated by visual alignment
+                            with the room's grid markings, or measured with a compass). Since the
+                            yaw angle is relative to wherever the robot was pointed when
+                            <code>RESET_YAW</code> ran, any misalignment in starting heading
+                            rotates the entire scan. For a clean merged map, all five robots must
+                            start pointing in the same global direction, or <code>theta_0</code>
+                            must be measured and corrected per position.
+                        </figcaption>
+                    </figure>
+                    <p>
+                        With only 2 of 5 positions scanned, the global map cannot be assembled yet.
+                        Once all positions are collected, the transformation above will be applied
+                        to all readings and the resulting (gx, gy) points will be plotted together
+                        to reconstruct the room outline.
+                    </p>
+                </div>
+            </section>
+ 
+            <!-- ============================================================ -->
+            <!--  FUTURE UPDATES                                               -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="future-updates">
+                <h2 class="section-title">Updates Later</h2>
+                <div class="section-content">
+                    <p>
+                        <em>This section will be updated after additional lab testing. Planned work:</em>
+                    </p>
+                    <ul>
+                        <li>Debug and fix the hardware issue that caused the robot to stop at (5, 3) — likely a loose Qwiic cable or low battery</li>
+                        <li>Complete scans at (-3, -2), (0, 0), and (5, 3)</li>
+                        <li>Improve data collection to consistently reach 14+ readings per scan (currently achieving ~9)</li>
+                        <li>Apply coordinate transformations to merge all five scans into a global map</li>
+                        <li>Compare the merged map against the known room geometry</li>
+                    </ul>
+                    <p>
+                        <em>Results and figures will be added here after the follow-up session.</em>
+                    </p>
+                </div>
+            </section>
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2025/labs/Lab9.html" target="_blank">Lab 9 Instructions — Fast Robots @ Cornell</a></li>
+                        <li><a href="https://jcai2565.github.io/2025/04/07/lab9.html" target="_blank">Jeffery Cai's Lab 9 Report</a> (referenced for how Jeffery approach this task)</li>
+                        <li>Grammarly writing assistance is used to fix my report's grammar and sentence flow.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
