@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 12 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 12: Path Planning and Execution</h1>
+            </header>
+ 
+
+            <!-- ═══════════════════════  OBJECTIVE  ═══════════════════════ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The objective of this lab is to make the robot navigate through a series of
+                        waypoints in the same environment used for mapping and localization, as
+                        quickly and accurately as possible. The waypoints are given in grid coordinates
+                        (1 grid cell = 1&nbsp;ft):
+                    </p>
+
+                    <pre><code>1. (-4, -3)    <-- start
+            2. (-2, -1)
+            3. ( 1, -1)
+            4. ( 2, -3)
+            5. ( 5, -3)
+            6. ( 5, -2)
+            7. ( 5,  3)
+            8. ( 0,  3)
+            9. ( 0,  0)    <-- end</code></pre>
+
+                    <p>
+                        Lab 12 is open-ended. We are encouraged to combine global
+                        path planning, local path planning, feedback control, localization, and
+                        onboard vs.&nbsp;offboard processing in whatever way works best for our robot.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════  APPROACH  ═══════════════════════ -->
+            <section class="project-section" id="approach">
+                <h2 class="section-title">Choosing an Approach</h2>
+                <div class="section-content">
+                    <p>
+                        Iris and I worked on Lab 12 together. Before writing any code we read
+                        <a href="https://jcai2565.github.io/2025/05/13/lab12.html" target="_blank" rel="noopener">Jeffery Cai's lab 12 writeup</a>,
+                        which compares four candidate strategies (full open-loop timing, naive
+                        waypoint following with geometric heading/distance calculations, ToF-based
+                        stopping, and full Bayes-filter localization) and walks through the pros and
+                        cons of each. His analysis of timing-based open loop vs.&nbsp;ToF stopping
+                        was particularly useful for figuring out which method would work best for
+                        our robot.
+                    </p>
+
+                    <p>
+                        We also talked to Dong, a friend and another student of the class, who pointed out that <strong>local
+                        planning with open-loop straight lines and feedback-controlled turns</strong>
+                        isn't that difficult to implement, since we already have a
+                        working orientation PID controller from Lab 9. Combined with Jeffery's
+                        geometry (compute the heading and distance to the next waypoint from the
+                        current pose with <code>atan2</code> and <code>hypot</code>), this gave us
+                        a clear path to a working implementation:
+                    </p>
+
+                    <ul style="margin: 0 0 14px 24px; line-height: 2;">
+                        <li><strong>Geometric planning:</strong> compute target heading and distance
+                            to each waypoint from the current expected pose (borrowed from Jeffery).</li>
+                        <li><strong>Closed-loop turning:</strong> use the Lab 9 orientation PID to
+                            rotate to each target heading (Dong's suggestion).</li>
+                        <li><strong>Open-loop driving:</strong> convert the planned distance to a
+                            drive duration using a calibrated forward speed, and send the motors
+                            forward at a fixed PWM for that time.</li>
+                    </ul>
+
+                    <p>
+                        We chose Python orchestration over a fully onboard implementation so we
+                        could tune speed, settle times, and per-leg corrections without re-flashing
+                        the Artemis after every change.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════  ARCHITECTURE  ═══════════════════════ -->
+            <section class="project-section" id="architecture">
+                <h2 class="section-title">Architecture</h2>
+                <div class="section-content">
+                    <p>
+                        The firmware provides two primitives over BLE:
+                        <code>SET_ORIENTATION_SETPOINT</code> (closed-loop PID turn to an absolute
+                        world heading) and <code>DRIVE_OPEN_LOOP</code> (timed forward drive at a
+                        given PWM). Python handles all planning, orchestration, and per-leg
+                        corrections; the Artemis just executes the primitives as they arrive.
+                    </p>
+
+                    <h3>CMD_lab12 enum</h3>
+
+                    <pre><code># Python: cmd_types.py
+            class CMD_lab12(Enum):
+                RESET_YAW                = 0
+                START_PID                = 1
+                STOP_PID                 = 2
+                SET_ORIENTATION_SETPOINT = 3
+                DRIVE_OPEN_LOOP          = 4
+                SET_ORIENTATION_GAINS    = 5
+                GET_YAW                  = 6</code></pre>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════  FIRMWARE  ═══════════════════════ -->
+            <section class="project-section" id="firmware">
+                <h2 class="section-title">Firmware: <code>lab12_planning.ino</code></h2>
+                <div class="section-content">
+                    <p>
+                        The firmware is built on top of Lab 9's orientation PID controller. Two
+                        additions matter for Lab 12:
+                    </p>
+
+                    <h3>Orientation PID with angle wraparound</h3>
+                    <p>
+                        The Lab 9 PID computed <code>error = setpoint − gyro_yaw</code> directly,
+                        which works fine when both stay in (−180&deg;, 180&deg;]. Lab 12's trajectory
+                        crosses that boundary on leg&nbsp;8 (turning from heading +180&deg; toward
+                        −90&deg;), and without wrapping the error becomes −270&deg; and the robot
+                        spins the long way around. Wrapping the error to (−180&deg;, 180&deg;] before
+                        using it forces the shortest-path turn:
+                    </p>
+
+                    <pre><code>void runOrientationPIDController() {
+            if (myICM.dataReady()) {
+                myICM.getAGMT();
+                updateGyroYaw();
+            }
+
+            orientation_error = orientation_setpoint - gyro_yaw;
+            // wrap to (-180, 180] so the PID always takes the shortest-path turn
+            while (orientation_error >   180.0) orientation_error -= 360.0;
+            while (orientation_error <= -180.0) orientation_error += 360.0;
+
+            orientation_control_speed = orientation_Kp * fabs(orientation_error);
+            orientation_control_speed = constrain(orientation_control_speed,
+                                                    MIN_SPEED, MAX_SPEED);
+
+            if (abs(orientation_error) < YAW_DEADZONE) {
+                stop();
+            } else {
+                orientation_control_speed = max(orientation_control_speed, (float)MIN_TURN_PWM);
+                if (orientation_error > 0) rotateCCW(orientation_control_speed);
+                else                       rotateCW(orientation_control_speed);
+            }
+            }</code></pre>
+
+                    <h3>DRIVE_OPEN_LOOP command</h3>
+                    <p>
+                        This pauses the orientation PID, drives forward at a given PWM for a given
+                        number of milliseconds, and resumes the PID with the post-drive yaw as the
+                        new setpoint (so the PID doesn't suddenly kick the robot back to whatever
+                        old setpoint it was holding). Critically, we keep integrating
+                        <code>gyro_yaw</code> during the drive so we know which direction we're
+                        actually facing when the drive ends:
+                    </p>
+
+                    <pre><code>case DRIVE_OPEN_LOOP: {
+            int pwm_in, duration_ms;
+            if (!robot_cmd.get_next_value(pwm_in))      break;
+            if (!robot_cmd.get_next_value(duration_ms)) break;
+
+            // Pause PID so it doesn't fight the forward drive
+            bool was_pid_on = orientation_pid_running;
+            orientation_pid_running = false;
+
+            forward(pwm_in);
+            unsigned long t0 = millis();
+            while ((millis() - t0) < (unsigned long)duration_ms) {
+                // keep integrating yaw during the drive so we know where we ended up
+                if (myICM.dataReady()) {
+                myICM.getAGMT();
+                updateGyroYaw();
+                }
+                delay(2);
+            }
+            stop();
+
+            // Snap setpoint to actual end-of-drive heading so PID doesn't kick
+            orientation_setpoint = gyro_yaw;
+            orientation_pid_running = was_pid_on;
+            break;
+            }</code></pre>
+
+                    <h3>Gyro full-scale range</h3>
+                    <p>
+                        One subtle issue we hit during turn calibration: a commanded 90&deg; turn
+                        resulted in roughly 180&deg; of physical rotation. The cause was gyro
+                        saturation &mdash; the ICM-20948 defaults to a &plusmn;250 dps full-scale
+                        range, and our fast turns exceeded that, so <code>gyro_yaw</code>
+                        under-integrated by about 2&times;. The fix was to widen the range to
+                        &plusmn;1000 dps right after IMU init:
+                    </p>
+
+                    <pre><code>// Increase gyro full-scale range so fast rotations don't saturate
+            ICM_20948_fss_t myFSS;
+            myFSS.g = dps1000;
+            myFSS.a = gpm2;
+            myICM.setFullScale((ICM_20948_Internal_Gyr | ICM_20948_Internal_Acc), myFSS);
+            Serial.println("Gyro set to \xc2\xb11000 dps");
+
+            calibrateGyroBias();</code></pre>
+
+                    <p>
+                        Wee also dropped <code>MAX_SPEED</code> from
+                        255 to 180 to keep the angular velocity lower during turns. After both
+                        changes the 90&deg; calibration lands within a few degrees of the commanded
+                        target.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════  PYTHON PLANNER  ═══════════════════════ -->
+            <section class="project-section" id="planner">
+                <h2 class="section-title">Python Planner: <code>lab12_planning.ipynb</code></h2>
+                <div class="section-content">
+                    <h3>Waypoints and tuning knobs</h3>
+                    <p>
+                        World coordinates in feet, +x east (initial heading), +y north. The robot
+                        starts at waypoint&nbsp;0 facing +x.
+                    </p>
+
+                    <pre><code>WAYPOINTS_FT = [
+                (-4, -3), # 0: start
+                (-2, -1), # 1
+                ( 1, -1), # 2
+                ( 2, -3), # 3
+                ( 5, -3), # 4
+                ( 5, -2), # 5
+                ( 5,  3), # 6
+                ( 0,  3), # 7
+                ( 0,  0), # 8: end
+            ]
+
+            PWM_DRIVE        = 100     # forward PWM (lower = more reliable, slower)
+            SPEED_FT_PER_S   = 5.8     # measured via 1-second calibration drive
+            TURN_SETTLE_S    = 2.5     # base settle time per turn
+            TURN_PER_DEG     = 0.015   # extra settle time per degree of turn
+            DRIVE_BUFFER_S   = 0.4
+            INTER_LEG_S      = 0.5</code></pre>
+
+                    <h3>Per-leg geometry</h3>
+                    <p>
+                        The geometry calculation is borrowed from Jeffery's writeup: given the
+                        current pose and the next waypoint, compute the world heading needed (using
+                        <code>atan2(dy, dx)</code>), the shortest-path turn delta from the current
+                        heading, and the straight-line distance (using <code>hypot</code>).
+                    </p>
+
+                    <pre><code>def normalize_angle(a):
+                """Wrap angle to (-180, 180]."""
+                while a >   180.0: a -= 360.0
+                while a <= -180.0: a += 360.0
+                return a
+
+            def plan_leg(cur_pose, next_wp_ft):
+                """Return (target_heading_world_deg, delta_theta_deg, distance_ft)."""
+                cur_x, cur_y, cur_theta = cur_pose
+                nx, ny = next_wp_ft
+                dx = nx - cur_x
+                dy = ny - cur_y
+                desired = math.degrees(math.atan2(dy, dx))   # world heading needed
+                delta   = normalize_angle(desired - cur_theta)
+                dist    = math.hypot(dx, dy)
+                return desired, delta, dist</code></pre>
+
+                    <h3>Per-leg execution</h3>
+                    <p>
+                        For each leg: turn to the target heading via PID, wait for the turn to
+                        settle (longer for larger turns), then drive forward for the calibrated
+                        time. The expected pose is updated to the waypoint and the new heading
+                        after each leg.
+                    </p>
+
+                    <pre><code>def execute_leg(cur_pose, next_wp_ft, leg_idx):
+                desired, delta, dist_ft = plan_leg(cur_pose, next_wp_ft)
+
+                # apply per-leg corrections (see "Tuning with lookup tables" below)
+                heading_offset = HEADING_OFFSET_DEG.get(leg_idx, 0.0)
+                dist_scale     = DISTANCE_SCALE.get(leg_idx, 1.0)
+
+                desired_corrected = normalize_angle(desired + heading_offset)
+                drive_time_s      = (dist_ft / SPEED_FT_PER_S) * dist_scale
+                drive_time_ms     = int(drive_time_s * 1000)
+                turn_wait_s       = TURN_SETTLE_S + abs(delta) * TURN_PER_DEG
+
+                # 1) Turn (firmware uses absolute setpoint in world frame)
+                if abs(normalize_angle(desired_corrected - cur_pose[2])) > 1.0:
+                    ble.send_command(CMD_lab12.SET_ORIENTATION_SETPOINT,
+                                    f"{desired_corrected:.2f}")
+                    time.sleep(turn_wait_s)
+
+                # 2) Drive open-loop
+                ble.send_command(CMD_lab12.DRIVE_OPEN_LOOP,
+                                f"{PWM_DRIVE}|{drive_time_ms}")
+                time.sleep(drive_time_s + DRIVE_BUFFER_S
+                        + EXTRA_PAUSE_S.get(leg_idx, 0.0))
+
+                # 3) Update expected pose
+                return (next_wp_ft[0], next_wp_ft[1], desired_corrected)</code></pre>
+
+                    <h3>Per-leg numbers</h3>
+                    <p>
+                        Sanity-check of what the planner computes for each leg (world heading
+                        0&deg;&nbsp;=&nbsp;+x; perfect-execution assumption):
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Leg</th><th>From &rarr; To</th><th>dx, dy (ft)</th>
+                                <th>World heading</th><th>&Delta;&theta; from prev</th><th>Distance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>1</td><td>(&minus;4,&minus;3) &rarr; (&minus;2,&minus;1)</td><td>2, 2</td><td>+45&deg;</td><td>+45&deg;</td><td>2.83 ft</td></tr>
+                            <tr><td>2</td><td>(&minus;2,&minus;1) &rarr; (1,&minus;1)</td><td>3, 0</td><td>0&deg;</td><td>&minus;45&deg;</td><td>3.00 ft</td></tr>
+                            <tr><td>3</td><td>(1,&minus;1) &rarr; (2,&minus;3)</td><td>1, &minus;2</td><td>&minus;63.4&deg;</td><td>&minus;63.4&deg;</td><td>2.24 ft</td></tr>
+                            <tr><td>4</td><td>(2,&minus;3) &rarr; (5,&minus;3)</td><td>3, 0</td><td>0&deg;</td><td>+63.4&deg;</td><td>3.00 ft</td></tr>
+                            <tr><td>5</td><td>(5,&minus;3) &rarr; (5,&minus;2)</td><td>0, 1</td><td>+90&deg;</td><td>+90&deg;</td><td>1.00 ft</td></tr>
+                            <tr><td>6</td><td>(5,&minus;2) &rarr; (5,3)</td><td>0, 5</td><td>+90&deg;</td><td>0&deg;</td><td><strong>5.00 ft</strong></td></tr>
+                            <tr><td>7</td><td>(5,3) &rarr; (0,3)</td><td>&minus;5, 0</td><td>+180&deg;</td><td>+90&deg;</td><td><strong>5.00 ft</strong></td></tr>
+                            <tr><td>8</td><td>(0,3) &rarr; (0,0)</td><td>0, &minus;3</td><td>&minus;90&deg;</td><td>+90&deg;</td><td>3.00 ft</td></tr>
+                        </tbody>
+                    </table>
+
+                    <p>
+                        Legs&nbsp;6 and&nbsp;7 are the longest at 5&nbsp;ft each &mdash; and they
+                        turned out to be where most of our open-loop trouble lived.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════  TUNING  ═══════════════════════ -->
+            <section class="project-section" id="tuning">
+                <h2 class="section-title">Tuning with Lookup Tables</h2>
+                <div class="section-content">
+                    <p>
+                        Because the drives are open-loop, before we added per-leg correction
+                        tables the robot routinely overshot or undershot the target distance
+                        and the heading errors accumulated across legs. On runs without
+                        corrections we watched the robot slam into walls on the long 5&nbsp;ft
+                        legs, take wide arcs on diagonals, and finish the trajectory pointing
+                        in completely wrong directions &mdash; the kind of failure mode that's
+                        inherent to open-loop control once you string more than a few legs
+                        together.
+                    </p>
+
+                    <p>
+                        The fix is three small lookup tables that bias each leg's commanded
+                        heading, scale each leg's drive time, and optionally pause longer
+                        after a leg before turning into the next one. Each table is keyed by
+                        leg index; missing keys mean no correction.
+                    </p>
+
+                    <pre><code># Per-leg tuning offsets - adjust based on observed errors
+            HEADING_OFFSET_DEG = {
+                # leg_idx : extra degrees to add to target heading
+                # e.g. 5: +8.0,   # if leg 5 consistently undershoots its 90 deg turn
+                # e.g. 7: -5.0,   # if leg 7 overshoots and hits the right wall
+            }
+
+            DISTANCE_SCALE = {
+                # leg_idx : multiplier on drive time
+                # e.g. 6: 0.80,   # if leg 6 overshoots a 5 ft drive by 1 ft (~20% long)
+                # e.g. 1: 1.15,   # if leg 1 undershoots
+            }
+
+            EXTRA_PAUSE_S = {
+                # leg_idx : extra seconds to wait AFTER this leg before next turn
+                # e.g. 3: 1.0,    # let the robot settle before turning into the corner
+            }</code></pre>
+
+                    <p>
+                        Our tuning workflow was to run the trajectory once with empty dicts,
+                        note for each leg whether it overshot or undershot in distance and
+                        heading, then fill in corrections leg by leg. Long legs (6 and 7)
+                        were tuned first since their absolute errors were the most visible,
+                        then shorter ones. The corrections carry forward through pose
+                        updates &mdash; we update <code>pose.theta</code> with the
+                        <em>corrected</em> heading so the next leg's <code>plan_leg</code>
+                        call computes the right delta off it.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════  RESULTS  ═══════════════════════ -->
+            <section class="project-section" id="results">
+                <h2 class="section-title">Results</h2>
+                <div class="section-content">
+                    <p>
+                        After tuning the per-leg heading and distance corrections, the robot
+                        successfully traverses all 9 waypoints from (&minus;4,&nbsp;&minus;3) to
+                        (0,&nbsp;0) in about 30&nbsp;seconds.
+                    </p>
+
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/I2furFEJYZo"
+                            title="Lab 12 &mdash; Final tuned path planning run"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen></iframe>
+                        <p>Video 1. Final tuned waypoint trajectory.</p>
+                    </div>
+
+                    <div class="callout">
+                        We wanted to include more videos &mdash; particularly the earlier runs
+                        where the robot was overshooting, undershooting, slamming into walls
+                        on the long legs, and tracing weird trajectories before the lookup
+                        tables were in place &mdash; but YouTube blocked further uploads with
+                        a <em>"Daily upload limit reached, verification needed"</em> message
+                        that also prevented us from uploading from a backup account. The
+                        final video above shows the working tuned run; the failure modes it
+                        covers up (overshoot, drift accumulation, heading bias) are the ones
+                        described in the Tuning section above.
+                    </div>
+
+                    <h3>What worked and what didn't</h3>
+                    <p>
+                        The hybrid open-loop drive + PID-turn architecture made each leg easy
+                        to reason about: turns are repeatable because the PID closes the loop
+                        on yaw, and short forward drives are accurate enough open-loop. The
+                        failure modes all came from open-loop error compounding over distance
+                        and across legs &mdash; exactly what Jeffery's analysis flagged as the
+                        main weakness of timing-based control. We never needed the
+                        heavier-duty TOF stopping or full Bayes-filter approaches because the
+                        per-leg correction tables were enough to land each waypoint within a
+                        grid cell or so.
+                    </p>
+
+                    <p>
+                        If we wanted to make the run faster or more robust to battery
+                        variation, the next step would be ToF-based early stopping on the
+                        two long legs (the wall is at a known distance for both leg&nbsp;6 and
+                        leg&nbsp;7), exactly along the lines of what Jeffery did in his
+                        implementation. For now the open-loop + lookup-table version is
+                        reliable enough that we're calling Lab 12 done.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2026/labs/Lab12a.html" target="_blank"> Lab 10 Instructions — Fast Robots @ Cornell</a></li>
+                        <li><a href="https://iris12360-code.github.io/fastrobotics/labs/lab12.html" target="_blank"> Iris Ren's Lab 12 Report</a>I worked with Iris for this lab.</li>
+                        <li><a href="https://donghaohong.github.io/Fast_Robots/" target="_blank"> Donghao Hong's Lab 12 Report</a>Talking with Dong provides the initial inspiration toward the hybrid open-loop drive + PID turn
+                        architecture</li>
+                        <li><a href="https://jcai2565.github.io/2025/05/13/lab12.html" target="_blank">Jeffery Cai's Lab 12 Report</a> Honestly, I reference Jeffery's report every lab because he was our TA from Mechatronics when Iris and I took it together. 
+                            Jeffery was also the one who told us Fast Robot is a very fun class and that we should take it. 
+                            For this lab, we laid out the geometric planning approach from Jeffery's lab report.</li>
+                        <li>Grammarly writing assistance is used to fix my report's grammar and sentence flow.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

@@ -562,6 +562,202 @@ def to_global(rx_ft, ry_ft, theta_0_deg, angle_deg, dist_mm):
                 </div>
             </section>
             <!-- ============================================================ -->
+            <!--  FUTURE!!!!                                                 -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="future-updates">
+                <h2 class="section-title">Updates!!!</h2>
+                <div class="section-content">
+            
+                    <p>
+                        After finishing Lab 11, I came back to revisit Lab 9, to add more (redo) points to
+                        improve the mapping data. While working on Lab 11, which relies greatly on Lab 9,
+                        I made 2 changes that significantly
+                        improved scan reliability: I increased the per-setpoint settle time from 4&nbsp;s
+                        to 6&nbsp;s to give the robot enough time to come to rest before
+                        logging, and I widened the yaw deadzone from 5° to 10° so that
+                        readings would be captured even when the robot slightly overshot
+                        its setpoint. Together, these changes raised my reliable reading
+                        count from 9 to a full 15 readings per scan across all four
+                        marked poses: (&minus;3,&nbsp;&minus;2), (0,&nbsp;3),
+                        (5,&nbsp;&minus;3), and (5,&nbsp;3). I also made sure to fully charge the batteries
+                        this time so the robot would rotate smoothly and finish all four scans without
+                        stalling.
+                    </p>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose (-3, -2)                                  -->
+                    <!-- ============================================== -->
+                    <h3>At point (&minus;3, &minus;2)</h3>
+            
+                    <p>
+                        <a href="https://youtu.be/LoUgUrZnq3E?si=uIFXW1IiOdjrP6r1"
+                        target="_blank" rel="noopener">
+                            Video of the robot performing the 360° scan at this pose
+                        </a>
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab9/1a.png"
+                            alt="Yaw and ToF distance vs. time at pose (-3, -2)">
+                        <figcaption>
+                            Figure 7. Yaw and ToF distance vs. time for the scan at
+                            pose (&minus;3, &minus;2). 15 readings collected.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab9/2a.png"
+                            alt="Polar plot of ToF distance vs. yaw at pose (-3, -2)">
+                        <figcaption>
+                            Figure 8. Polar plot of ToF distance vs. yaw at
+                            pose (&minus;3, &minus;2). Two long readings (~3700&nbsp;mm)
+                            at ~15° and ~42° point toward the far walls in the +x
+                            direction; the shorter readings on the other side
+                            correspond to the nearby south and west walls.
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose (0, 3)                                    -->
+                    <!-- ============================================== -->
+                    <h3>At point (0, 3)</h3>
+            
+                    <p>
+                        <a href="https://youtu.be/YmjuYpKp6mQ?si=ndTPxsgB-tcbGNQA"
+                        target="_blank" rel="noopener">
+                            Video of the robot performing the 360° scan at this pose
+                        </a>
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab9/3a.png"
+                            alt="Yaw and ToF distance vs. time at pose (0, 3)">
+                        <figcaption>
+                            Figure 9. Yaw and ToF distance vs. time for the scan at
+                            pose (0,&nbsp;3). 15 readings collected.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab9/4a.png"
+                            alt="Polar plot of ToF distance vs. yaw at pose (0, 3)">
+                        <figcaption>
+                            Figure 10. Polar plot of ToF distance vs. yaw at
+                            pose (0,&nbsp;3). The north wall is very close (short
+                            readings around 90°), while the longer readings around
+                            270° look down the length of the room toward the south
+                            wall.
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose (5, -3)                                   -->
+                    <!-- ============================================== -->
+                    <h3>At point (5, &minus;3)</h3>
+            
+                    <p>
+                        <a href="https://youtu.be/YAAlzF2B9og?si=WG4G0U4lXn1XGQag"
+                        target="_blank" rel="noopener">
+                            Video of the robot performing the 360° scan at this pose
+                        </a>
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab9/5a.png"
+                            alt="Yaw and ToF distance vs. time at pose (5, -3)">
+                        <figcaption>
+                            Figure 11. Yaw and ToF distance vs. time for the scan at
+                            pose (5,&nbsp;&minus;3). 15 readings collected.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab9/6a.png"
+                            alt="Polar plot of ToF distance vs. yaw at pose (5, -3)">
+                        <figcaption>
+                            Figure 12. Polar plot of ToF distance vs. yaw at
+                            pose (5,&nbsp;&minus;3). Being near the bottom-right
+                            corner, the robot sees one very long sightline going
+                            back across the room (the spike to ~2500&nbsp;mm near
+                            15°) and short readings to the south and east walls.
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose (5, 3)                                    -->
+                    <!-- ============================================== -->
+                    <h3>At point (5, 3)</h3>
+            
+                    <p>
+                        <a href="https://youtu.be/n79gkrkBLg8?si=gnFyPofTGiqOwJ6Z"
+                        target="_blank" rel="noopener">
+                            Video of the robot performing the 360° scan at this pose
+                        </a>
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab9/7a.png"
+                            alt="Yaw and ToF distance vs. time at pose (5, 3)">
+                        <figcaption>
+                            Figure 13. Yaw and ToF distance vs. time for the scan at
+                            pose (5,&nbsp;3). 15 readings collected.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab9/8a.png"
+                            alt="Polar plot of ToF distance vs. yaw at pose (5, 3)">
+                        <figcaption>
+                            Figure 14. Polar plot of ToF distance vs. yaw at
+                            pose (5,&nbsp;3). The two distinct long readings (3168
+                            and 3425&nbsp;mm near 192° and 292°) point back toward
+                            the open part of the room; the surrounding short readings
+                            trace the corner walls.
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Combined map                                   -->
+                    <!-- ============================================== -->
+                    <h3>Combined map from all four scans</h3>
+            
+                    <p>
+                        To build a single map of the room from the four individual
+                        scans, I transformed each scan&rsquo;s polar
+                        (yaw,&nbsp;distance) readings into Cartesian (x,&nbsp;y)
+                        coordinates in the world frame. For each scan, the
+                        endpoint of each ray is given by
+                        <em>x<sub>world</sub></em>&nbsp;=&nbsp;<em>p<sub>x</sub></em>&nbsp;+&nbsp;<em>d</em>&nbsp;cos(<em>θ</em>)
+                        and
+                        <em>y<sub>world</sub></em>&nbsp;=&nbsp;<em>p<sub>y</sub></em>&nbsp;+&nbsp;<em>d</em>&nbsp;sin(<em>θ</em>),
+                        where (<em>p<sub>x</sub></em>,&nbsp;<em>p<sub>y</sub></em>)
+                        is the robot&rsquo;s position in meters (converted from feet
+                        using 1&nbsp;ft&nbsp;=&nbsp;0.3048&nbsp;m), <em>d</em> is the
+                        ToF distance in meters, and <em>θ</em> is the gyro yaw in
+                        radians. Plotting all four scans together gives a rough
+                        outline of the room.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab9/9a.png"
+                            alt="Combined map built from all four scans">
+                        <figcaption>
+                            Figure 15. Combined map from the four scans. Each colored
+                            "×" marks the robot&rsquo;s placement position
+                            (red:&nbsp;(&minus;3,&minus;2)&nbsp;ft,
+                            green:&nbsp;(0,&nbsp;3)&nbsp;ft,
+                            blue:&nbsp;(5,&minus;3)&nbsp;ft,
+                            purple:&nbsp;(5,&nbsp;3)&nbsp;ft); each colored dot is a
+                            ToF endpoint from that scan. Together, the points trace
+                            out the outer walls and interior features of the room.
+                            The coverage is sparse with only 15 readings per pose,
+                            but the overall room shape is recognizable.
+                        </figcaption>
+                    </figure>
+            
+                </div>
+            </section>
+            <!-- ============================================================ -->
             <!--  REFERENCES                                                   -->
             <!-- ============================================================ -->
             <section class="project-section" id="references">

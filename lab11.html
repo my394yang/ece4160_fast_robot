@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 11 | Michelle Yang</title>
+    <link rel="icon" type="image/png" href="./images/girl_cat_computer.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header id="header">
+        <nav class="navigation-bar">
+            <div class="nav-left">
+                <h1 class="nav-title">Fast Robots</h1>
+            </div>
+            <div class="nav-right">
+                <a class="nav-link" href="./index.html">Home</a>
+            </div>
+        </nav>
+    </header>
+    <hr>
+    <main id="main-content">
+        <article class="project-article" id="top">
+            <header class="project-header">
+                <h1 class="project-main-title">Lab 11: Localization using Bayes Filter (Real)</h1>
+            </header>
+
+        <!-- ═══════════════════════  OBJECTIVE  ═══════════════════════ -->
+            <section class="project-section" id="objective">
+                <h2 class="section-title">Objective</h2>
+                <div class="section-content">
+                    <p>
+                        The objective of this lab is to perform localization with the Bayes filter on the
+                        actual robot in a real physical environment. Because the motion of these robots is
+                        extremely noisy in practice, the prediction step provides little value &mdash; so
+                        <strong>only the update step</strong> based on full 360&deg; ToF scans is used. A
+                        fully-functional and optimized Bayes filter implementation that works on the virtual
+                        robot is provided, and I make targeted changes so that it can interface with my real
+                        robot.
+                    </p>
+            
+                    <h3>Ground Truth</h3>
+                    <p>
+                        Unlike in the simulation environment, there is no automated method to get the real
+                        robot's ground truth pose. I instead identify the robot's pose by measuring its
+                        distance from the origin (0,&nbsp;0) of the map in tile units along the x and y
+                        directions. For this lab, I place the robot at the four marked positions:
+                        (&minus;3,&nbsp;&minus;2), (0,&nbsp;3), (5,&nbsp;&minus;3), and (5,&nbsp;3).
+                    </p>
+            
+                    <h3>Observation Loop</h3>
+                    <p>
+                        The robot performs a 360&deg; in-place rotation, taking ToF readings at 20&deg;
+                        increments starting from its current heading (+0&deg;, +20&deg;, +40&deg;, &hellip;,
+                        +340&deg; CCW), for a total of 18 readings. Reducing the number of observations
+                        reduces the accuracy of the localized pose, so I tune the firmware to reliably
+                        capture all 18.
+                    </p>
+                </div>
+            </section>
+            
+            <!-- ═══════════════════════  PRE-LAB  ═══════════════════════ -->
+            <section class="project-section" id="prelab">
+                <h2 class="section-title">Pre-lab Setup</h2>
+                <div class="section-content">
+                    <p>
+                        I set up the base code by copying <code>lab11_sim.ipynb</code> and
+                        <code>lab11_real.ipynb</code> into the notebooks directory,
+                        <code>localization_extras.py</code> into the
+                        <code>FastRobots-sim-release</code> root directory, and the necessary Bluetooth
+                        Python modules (<code>base_ble.py</code>, <code>ble.py</code>,
+                        <code>connection.yaml</code>, <code>cmd_types.py</code>) from previous labs into
+                        the notebooks directory.
+                    </p>
+            
+                    <ul style="margin: 0 0 14px 24px; line-height: 2;">
+                        <li><strong>localization_extras.py</strong> &mdash; provides the fully-functional
+                            localization module that works on the virtual robot.</li>
+                        <li><strong>lab11_sim.ipynb</strong> &mdash; demonstrates the Bayes filter
+                            implementation on the virtual robot.</li>
+                        <li><strong>lab11_real.ipynb</strong> &mdash; provides skeleton code to integrate
+                            the real robot with the localization code.</li>
+                    </ul>
+                </div>
+            </section>
+            
+            <!-- ═══════════════════════  TASK 1: SIMULATION  ═══════════════════════ -->
+            <section class="project-section" id="task1">
+                <h2 class="section-title">Task 1 &mdash; Localization in Simulation</h2>
+                <div class="section-content">
+                    <p>
+                        Before testing on the real robot, I ran <code>lab11_sim.ipynb</code> to verify that
+                        the provided localization module works correctly in simulation. The simulator runs
+                        the full Bayes filter loop &mdash; prediction step from odometry, followed by an
+                        update step from the 18-reading observation scan &mdash; at each of 15 trajectory
+                        steps.
+                    </p>
+            
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/UcqiJpbFO8o"
+                            title="Lab 11 Task 1 &mdash; Simulation run"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen></iframe>
+                        <p>Video 1. Bayes filter localization running in the simulator.</p>
+                    </div>
+            
+                    <figure>
+                        <img src="./images/lab11/image17.png" alt="Figure 1 &mdash; Final plot from the simulation run" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 1. Final plot from the simulation run, showing odometry (red), ground
+                            truth (green), and belief (blue) tracks. The red odometry path drifts
+                            significantly outside the map, while the blue belief stays inside the map and
+                            closely follows the green ground truth &mdash; demonstrating that the Bayes
+                            filter successfully corrects for accumulated odometry error using the sensor
+                            model.
+                        </figcaption>
+                    </figure>
+            
+                    <h3>Prediction and Update Stats (Step 0)</h3>
+                    <p>
+                        The Jupyter notebook prints per-step prediction and update stats. At step 0, the
+                        prediction step runs in 0.031&nbsp;s and the update step in 0.001&nbsp;s. The prior
+                        belief is centered roughly half a cell off from ground truth, with probability
+                        0.117. After the update step, the belief snaps to the correct cell at probability
+                        1.0.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab11/image16.png" alt="Figure 2 &mdash; Prediction and update stats from step 0" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 2. Example prediction and update stats from the simulator (step 0). GT
+                            index (6,&nbsp;3,&nbsp;6); prior belief index (6,&nbsp;6,&nbsp;8) with
+                            prob&nbsp;=&nbsp;0.117; updated belief index (6,&nbsp;4,&nbsp;6) with
+                            prob&nbsp;=&nbsp;1.0.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+            
+            <!-- ═══════════════════════  TASK 2: REAL ROBOT  ═══════════════════════ -->
+            <section class="project-section" id="task2">
+                <h2 class="section-title">Task 2 &mdash; Integrating the Real Robot</h2>
+                <div class="section-content">
+                    <p>
+                        For the real robot, I reused the same Arduino firmware from Lab 9 (mapping), since
+                        the on-board behavior is identical: rotate in place using orientation PID, settle at
+                        each setpoint, log (timestamp, yaw, distance), and dump the buffer over BLE on
+                        request. The work in Lab 11 happens almost entirely on the Python side.
+                    </p>
+            
+                    <h3>The RealRobot class</h3>
+                    <p>
+                        The localization module calls <code>RealRobot.perform_observation_loop()</code> to
+                        collect the 18 readings. I implemented this method to send the Lab 9 mapping
+                        commands over BLE, drive the robot through 18 setpoints (0&deg;, 20&deg;,&nbsp;&hellip;,
+                        340&deg;), then request the data buffer.
+                    </p>
+            
+                    <p>
+                        The BLE notification handler parses each <code>T:&lt;ms&gt;|Y:&lt;deg&gt;|D:&lt;mm&gt;</code>
+                        string from the Artemis into three buffers:
+                    </p>
+            
+                    <pre><code>def _mapping_data_notif_handler(self, uuid, byte_array):
+                """Parse 'T:&lt;ms&gt;|Y:&lt;deg&gt;|D:&lt;mm&gt;' strings from the Artemis."""
+                try:
+                    s = self.ble.bytearray_to_string(byte_array)
+                    kv = dict(item.split(":") for item in s.split("|"))
+                    self.T_arr.append(int(kv["T"]))
+                    self.Yaw_arr.append(float(kv["Y"]))
+                    self.Dist_arr.append(int(kv["D"]))
+                except Exception as e:
+                    print(f"[notif] error: {e}")</code></pre>
+            
+                    <p>
+                        The observation loop itself orchestrates the rotation and returns the 18 readings as
+                        a column NumPy array of meters (the format the localization module expects):
+                    </p>
+            
+                    <pre><code>async def perform_observation_loop(self, rot_vel=120):
+                self.T_arr.clear()
+                self.Yaw_arr.clear()
+                self.Dist_arr.clear()
+                SETTLE_S = 6.0
+            
+                self.ble.send_command(CMD_lab9.RESET_YAW, "")
+                await asyncio.sleep(0.5)
+                self.ble.send_command(CMD_lab9.START_MAPPING_360_ROTATION, "")
+                await asyncio.sleep(SETTLE_S)
+            
+                for setpoint in range(20, 360, 20):
+                    self.ble.send_command(CMD_lab9.SET_ORIENTATION_SETPOINT,
+                                        f"{float(setpoint)}")
+                    await asyncio.sleep(SETTLE_S)
+            
+                self.ble.send_command(CMD_lab9.STOP_MAPPING_360_ROTATION, "")
+                await asyncio.sleep(1.0)
+                self.ble.send_command(CMD_lab9.SEND_MAPPING_DATA, "")
+                await asyncio.sleep(5.0)
+            
+                n = len(self.Dist_arr)
+                if n &lt; 18:
+                    raise RuntimeError(f"Got only {n} readings, expected 18. "
+                                    f"Increase SETTLE_S or check BLE.")
+            
+                ranges_m = np.array(self.Dist_arr[:18], dtype=float) / 1000.0
+                bearings = np.array(self.Yaw_arr[:18], dtype=float)
+                sensor_ranges   = ranges_m[np.newaxis].T
+                sensor_bearings = bearings[np.newaxis].T
+                return sensor_ranges, sensor_bearings</code></pre>
+            
+                    <div class="callout">
+                        <strong>Note on <code>async</code>:</strong> The function is declared
+                        <code>async</code> and uses <code>await asyncio.sleep()</code> instead of
+                        <code>time.sleep()</code>. This is required because BLE notifications are delivered
+                        via the asyncio event loop &mdash; using a blocking sleep would queue notifications
+                        but prevent them from being processed during the 70+ seconds of the scan, causing
+                        zero readings to actually reach the handler. The <code>async</code> keyword
+                        propagates up: <code>BaseLocalization.get_observation_data()</code> also needs to
+                        be made <code>async</code>, and the notebook cell needs
+                        <code>await loc.get_observation_data()</code>.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- ═══════════════════════  TASK 3: 4 POSES  ═══════════════════════ -->
+            <section class="project-section" id="task3">
+                <h2 class="section-title">Task 3 &mdash; Localization at the Four Marked Poses</h2>
+                <div class="section-content">
+                    <p>
+                        With the <code>RealRobot</code> class implemented, I ran the update step of the
+                        Bayes filter at each of the four marked poses. For each pose, I started from a
+                        uniform prior (no information about the robot's location), then performed the 360&deg;
+                        scan and a single update step. I marked the ground truth (GT) on the plotter
+                        manually in a separate cell, converting from feet to meters:
+                    </p>
+            
+                    <pre><code># ground truth marker for current pose being tested
+            # change gt_ft for each 4 marked poses, then re-run
+            FT_TO_M = 0.3048
+            # pose 1: (-3, -2)   pose 2: (0, 3)   pose 3: (5, -3)   pose 4: (5, 3)
+            gt_ft = (-3, -2)
+            
+            gt_m = (gt_ft[0] * FT_TO_M, gt_ft[1] * FT_TO_M)
+            cmdr.plot_gt(gt_m[0], gt_m[1])
+            print(f"GT placed at {gt_ft} ft = ({gt_m[0]:.3f}, {gt_m[1]:.3f}) m")</code></pre>
+            
+                    <!-- ============================================== -->
+                    <!--  Debugging journey                              -->
+                    <!-- ============================================== -->
+                    <h3>Debugging journey at pose (&minus;3, &minus;2)</h3>
+            
+                    <p>
+                        Getting the first scan to actually produce a localized pose took several iterations
+                        of debugging. Most of these issues were also reflected back into the Lab 9 update
+                        section, which was revised after I got Lab 11 working.
+                    </p>
+            
+                    <h4>Issue 1: No odometry plotted, 0 readings received</h4>
+                    <p>
+                        On my first attempt, the plotter only showed the green ground truth marker and no
+                        blue belief dot. The error trace said the observation loop received 0 readings.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab11/image3.png" alt="Figure 3 &mdash; Plotter showing only GT marker, no belief" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>Figure 3. Only the green GT marker is visible at pose (&minus;3,&nbsp;&minus;2) &mdash; no belief was plotted because the observation loop received zero readings.</figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab11/image1.png" alt="Figure 4 &mdash; Console output before the error" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>Figure 4. Pre-caching of obs_views completed successfully and the uniform belief was initialized, but no observation data arrived.</figcaption>
+                    </figure>
+            
+                    <p>
+                        I added a print statement inside the notification handler to confirm whether BLE
+                        packets were even reaching Python:
+                    </p>
+            
+                    <pre><code>def _mapping_data_notif_handler(self, uuid, byte_array):
+                print(f"[notif] raw bytes: {byte_array[:40]}")   # debug print
+                ...</code></pre>
+            
+                    <figure>
+                        <img src="./images/lab11/image14.png" alt="Figure 5 &mdash; Error says 0 readings, but [notif] prints arrive after the error" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 5. The error fires first ("Got only 0 readings"), then all 18
+                            <code>[notif] raw bytes</code> prints arrive afterward. The notifications were
+                            queued during the scan but couldn't be processed until the asyncio loop got
+                            control back &mdash; which only happened after the function had already raised
+                            the error.
+                        </figcaption>
+                    </figure>
+            
+                    <p>
+                        The fix was switching from synchronous <code>time.sleep()</code> calls to
+                        <code>await asyncio.sleep()</code>, and making
+                        <code>perform_observation_loop()</code> and
+                        <code>BaseLocalization.get_observation_data()</code> both <code>async</code>.
+                        With this change, the asyncio loop gets control back during each sleep and can
+                        deliver notifications as they arrive.
+                    </p>
+            
+                    <h4>Issue 2: Only 13 of 18 readings received</h4>
+                    <p>
+                        After the asyncio fix, I started receiving notifications during the scan &mdash; but
+                        only 13 instead of the required 18. Looking at the yaws of the missed setpoints
+                        (155&deg;, 175&deg;, 195&deg;, 255&deg;, 275&deg;), they occurred in consecutive
+                        bunches, suggesting the robot was rotating too quickly through certain sections
+                        without spending a single PID loop iteration inside the 5&deg; deadzone at those
+                        setpoints.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab11/image10.png" alt="Figure 6 &mdash; Only 13 readings" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>Figure 6. 13 of 18 readings received. The pattern of missed setpoints suggested the robot was flying past them too fast for the firmware to log a reading.</figcaption>
+                    </figure>
+            
+                    <p>
+                        Rather than reduce <code>observations_count</code> in <code>world.yaml</code> (which
+                        would lose localization accuracy), I applied the same firmware tweaks that helped in
+                        Lab 9: <strong>widening the yaw deadzone from 5&deg; to 10&deg;</strong> and
+                        <strong>increasing the per-setpoint settle time from 4&nbsp;s to 6&nbsp;s</strong>.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab11/image2.png" alt="Figure 7 &mdash; 16 readings after widening the deadzone" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>Figure 7. After widening the yaw deadzone to 10&deg;, I got 16 of 18 readings &mdash; still not enough.</figcaption>
+                    </figure>
+            
+                    <p>
+                        After also increasing the settle time, I finally consistently got the full 18
+                        readings.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab11/image19.png" alt="Figure 8 &mdash; Testing the car on the lab table" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>Figure 8. Testing the car on the lab table (with my hand ready to catch it from falling off the edge).</figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab11/image5.png" alt="Figure 9 &mdash; All 18 readings received during testing" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>Figure 9. All 18 readings received during a benchtop test, with the update step running successfully (Update Time: 0.002&nbsp;s). Belief output was (0.914,&nbsp;0.000,&nbsp;&minus;90&deg;), which was clearly wrong for pose (&minus;3,&nbsp;&minus;2) &mdash; pointing to a deeper issue beyond just reading count.</figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose 1: (-3, -2) — initial bad result          -->
+                    <!-- ============================================== -->
+                    <h3>Pose (&minus;3, &minus;2) &mdash; initial run reveals heading issue</h3>
+            
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/MKBpYcPWcaE"
+                            title="Lab 11 &mdash; Localization scan at pose (-3, -2)"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen></iframe>
+                        <p>Video 2. Robot performing the 360&deg; localization scan at pose (&minus;3,&nbsp;&minus;2).</p>
+                    </div>
+            
+                    <figure>
+                        <img src="./images/lab11/image8.png" alt="Figure 10 &mdash; Belief at pose (-3, -2) lands inside the upper-right inner obstacle" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 10. At pose (&minus;3,&nbsp;&minus;2), the green GT marker is in the
+                            bottom-left at (&minus;0.914,&nbsp;&minus;0.610)&nbsp;m, but the blue belief
+                            landed inside the upper-right inner obstacle near (0.9,&nbsp;0.0)&nbsp;m
+                            &mdash; clearly the wrong cell.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab11/image11.png" alt="Figure 11 &mdash; Update step print at pose (-3, -2)" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 11. Update step logs from the same run: belief at
+                            (&minus;0.610,&nbsp;&minus;0.914,&nbsp;170&deg;) with probability 1.0. The
+                            coordinates are <em>swapped</em> from GT (&minus;0.914,&nbsp;&minus;0.610) and
+                            the heading is 170&deg;. I placed the robot facing the +x direction (0&deg;),
+                            so a reported heading of ~170&deg; meant the sensor's measurement frame was
+                            rotated almost 180&deg; from how I interpreted "forward".
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose 2: (0, 3) — same heading issue manifests  -->
+                    <!-- ============================================== -->
+                    <h3>Pose (0, 3) &mdash; flipped axes problem</h3>
+            
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/r3Gd1MUGo4Y"
+                            title="Lab 11 &mdash; Localization scan at pose (0, 3)"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen></iframe>
+                        <p>Video 3. Robot performing the 360&deg; localization scan at pose (0,&nbsp;3).</p>
+                    </div>
+            
+                    <p>
+                        When I ran the scan at pose (0,&nbsp;3), the belief landed nowhere near the GT
+                        either. The update step printed a belief location in the completely wrong quadrant.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab11/image4.png" alt="Figure 12 &mdash; Update step output for pose (0, 3) before fixing the ToF orientation" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 12. Update step logs from the (0,&nbsp;3) attempt: belief at
+                            (&minus;0.914,&nbsp;&minus;0.610,&nbsp;&minus;10&deg;) &mdash; the position is
+                            in the bottom-left of the map instead of the top-center where the GT actually
+                            is. This is the same flipped/rotated pattern seen at pose (&minus;3,&nbsp;&minus;2),
+                            confirming a systemic issue rather than a coincidence.
+                        </figcaption>
+                    </figure>
+            
+                    <p>
+                        I was always placing the robot facing east (+x direction), so why was the belief
+                        interpreting it as facing the wrong way? After thinking about it, I realized the
+                        issue: I had been mounting the ToF sensor with its long axis vertical, so the
+                        sensor's first reading (at gyro_yaw&nbsp;=&nbsp;0) wasn't actually pointing along
+                        the robot's nose. I <strong>changed the orientation of the ToF sensor</strong> so
+                        that the horizontal is now its long axis and the two mounting holes are on the
+                        bottom &mdash; making the sensor face directly along the robot's heading direction.
+                    </p>
+            
+                    <p>This change worked.</p>
+            
+                    <figure>
+                        <img src="./images/lab11/image7.png" alt="Figure 13 &mdash; Belief now near GT at pose (0, 3) after ToF reorientation" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 13. After re-mounting the ToF sensor with the correct orientation, the
+                            belief (blue) at pose (0,&nbsp;3) is now very close to the GT (green),
+                            separated by less than one grid cell.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab11/image13.png" alt="Figure 14 &mdash; Update step output at pose (0, 3) after fix" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 14. Update step logs after the ToF fix: belief at
+                            (0.305,&nbsp;0.914,&nbsp;&minus;10&deg;) with probability 1.0. GT is
+                            (0.000,&nbsp;0.914) &mdash; an XY error of just 0.305&nbsp;m (one grid cell).
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose 1 redo: (-3, -2)                          -->
+                    <!-- ============================================== -->
+                    <h3>Pose (&minus;3, &minus;2) &mdash; redo after the ToF fix</h3>
+            
+                    <p>
+                        With the ToF sensor reoriented, I returned to pose (&minus;3,&nbsp;&minus;2) and
+                        re-ran the scan. This time the belief landed exactly at the GT location.
+                    </p>
+            
+                    <figure>
+                        <img src="./images/lab11/image18.png" alt="Figure 15 &mdash; Perfect localization at pose (-3, -2) after the ToF fix" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 15. After re-mounting the ToF sensor, the redo of pose
+                            (&minus;3,&nbsp;&minus;2) places the belief (blue) right at the GT location
+                            (&minus;0.914,&nbsp;&minus;0.610)&nbsp;m &mdash; the issue from Figure 10 was
+                            indeed caused by the sensor orientation.
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose 3: (5, -3)                                -->
+                    <!-- ============================================== -->
+                    <h3>Pose (5, &minus;3)</h3>
+            
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/AWghpXmFtDM"
+                            title="Lab 11 &mdash; Localization scan at pose (5, -3)"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen></iframe>
+                        <p>Video 4. Robot performing the 360&deg; localization scan at pose (5,&nbsp;&minus;3).</p>
+                    </div>
+            
+                    <figure>
+                        <img src="./images/lab11/image6.png" alt="Figure 16 &mdash; Belief and GT at pose (5, -3)" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 16. At pose (5,&nbsp;&minus;3), GT is at (1.524,&nbsp;&minus;0.914)&nbsp;m
+                            (bottom-right corner), but the belief landed at approximately
+                            (1.5,&nbsp;0.6)&nbsp;m &mdash; correct in x but wrong sign in y, an error of
+                            roughly 1.5&nbsp;m.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab11/image15.png" alt="Figure 17 &mdash; Update step output at pose (5, -3)" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 17. Update step logs: belief at
+                            (1.524,&nbsp;0.610,&nbsp;&minus;110&deg;) with probability 1.0. The y-coordinate
+                            is flipped relative to GT (&minus;0.914 actual vs.&nbsp;0.610 belief). The
+                            localizer found a geometrically plausible cell along the east wall, but on the
+                            wrong side of the room.
+                        </figcaption>
+                    </figure>
+            
+                    <!-- ============================================== -->
+                    <!--  Pose 4: (5, 3)                                 -->
+                    <!-- ============================================== -->
+                    <h3>Pose (5, 3)</h3>
+            
+                    <div class="video-container">
+                        <iframe src="https://www.youtube.com/embed/cUb0wgITXCM"
+                            title="Lab 11 &mdash; Localization scan at pose (5, 3)"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen></iframe>
+                        <p>Video 5. Robot performing the 360&deg; localization scan at pose (5,&nbsp;3).</p>
+                    </div>
+            
+                    <figure>
+                        <img src="./images/lab11/image12.png" alt="Figure 18 &mdash; Belief and GT at pose (5, 3)" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 18. At pose (5,&nbsp;3), GT is at (1.524,&nbsp;0.914)&nbsp;m
+                            (top-right corner) and the belief (blue) landed at approximately
+                            (1.5,&nbsp;0.6)&nbsp;m &mdash; correct in x and only ~0.3&nbsp;m off in y,
+                            one of the better results.
+                        </figcaption>
+                    </figure>
+            
+                    <figure>
+                        <img src="./images/lab11/image9.png" alt="Figure 19 &mdash; Belief-only plot showing the localized position" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+                        <figcaption>
+                            Figure 19. Belief-only view from one of the scans (no GT marker placed yet).
+                            The single blue dot at approximately (1.5,&nbsp;&minus;0.9)&nbsp;m shows where
+                            the localizer placed the robot's pose &mdash; useful for inspecting raw belief
+                            output before the GT overlay.
+                        </figcaption>
+                    </figure>
+                </div>
+            </section>
+            
+            <!-- ═══════════════════════  DISCUSSION  ═══════════════════════ -->
+            <section class="project-section" id="discussion">
+                <h2 class="section-title">Discussion</h2>
+                <div class="section-content">
+                    <h3>Which poses localize well, and which don't?</h3>
+                    <p>
+                        After the ToF reorientation, pose (0,&nbsp;3) and the redo of (&minus;3,&nbsp;&minus;2)
+                        both gave the best results &mdash; the beliefs landed within one grid cell of the
+                        GT (XY error 0&minus;0.305&nbsp;m). Pose (0,&nbsp;3) is close to the north wall
+                        with a long open sightline to the south, giving an asymmetric range signature that
+                        the sensor model can match uniquely. Pose (&minus;3,&nbsp;&minus;2) sits near
+                        the bottom-left corner with two nearby walls, also distinctive.
+                    </p>
+                    <p>
+                        Pose (5,&nbsp;&minus;3) had the largest error &mdash; the belief landed at
+                        (1.524,&nbsp;0.610), mirroring the GT across the x-axis. Pose (5,&nbsp;3) was a
+                        middle case with about 0.3&nbsp;m of y-error. These two poses sit in more
+                        geometrically symmetric parts of the map where multiple cells produce similar
+                        18-ray range signatures, so the filter can snap to whichever cell scores marginally
+                        higher. With probability reported as 1.0 at every timestep due to floating-point
+                        underflow, it's hard to distinguish "highly confident" from "least-bad guess".
+                    </p>
+            
+                    <h3>Why heading matters so much</h3>
+                    <p>
+                        The single most informative debugging insight came from the heading output of the
+                        update step. Even when the position estimate was wrong, the reported heading told me
+                        which direction the localizer thought the robot was facing &mdash; and
+                        comparing that to the direction I knew I had placed the robot (170&deg; reported
+                        vs.&nbsp;0&deg; intended) revealed an offset between the sensor's mount orientation
+                        and the robot's apparent heading. Without the ToF re-orientation, every subsequent
+                        reading would have been ~180&deg; off from how the obs_views table indexed them,
+                        and no amount of tuning would have produced correct localization.
+                    </p>
+            
+                    <h3>Comparison to simulation</h3>
+                    <p>
+                        In simulation (Task 1), the Bayes filter tracked the ground truth almost perfectly
+                        across all 15 trajectory steps. On the real robot, only two of four poses gave
+                        sub-grid-cell errors. Several factors contribute to this gap:
+                    </p>
+                    <ul style="margin: 0 0 14px 24px; line-height: 2;">
+                        <li><strong>Sensor noise.</strong> The real VL53L1X has range bias, dropped
+                            readings, and gets noisier at longer distances &mdash; while the simulator's
+                            ToF model is much cleaner.</li>
+                        <li><strong>Gyro drift.</strong> Over a 360&deg; rotation, the integrated yaw drifts
+                            a few degrees, shifting which actual heading each "20&deg; setpoint" reading
+                            corresponds to.</li>
+                        <li><strong>Map mismatch.</strong> The physical map walls aren't perfectly aligned
+                            with the world.yaml geometry &mdash; tiles aren't exactly 1&nbsp;ft, walls have
+                            gaps, and obstacles have rounded edges.</li>
+                        <li><strong>Grid resolution.</strong> The 0.3048&nbsp;m positional resolution and
+                            20&deg; angular resolution put a hard floor on how precisely the belief can be
+                            placed regardless of sensor quality.</li>
+                    </ul>
+            
+                    <div class="callout">
+                        Even with these limitations, the Bayes filter is doing real work: it consistently
+                        places the belief inside the map, and at favorable poses comes within one grid cell
+                        of the true position from a completely uniform starting prior. That's a much better
+                        outcome than relying on raw odometry, which on the real robot would drift outside
+                        the map almost immediately.
+                    </div>
+                </div>
+            </section>
+            <!-- ============================================================ -->
+            <!--  REFERENCES                                                   -->
+            <!-- ============================================================ -->
+            <section class="project-section" id="references">
+                <h2 class="section-title">References</h2>
+                <div class="section-content">
+                    <ul>
+                        <li><a href="https://fastrobotscornell.github.io/FastRobots-2026/labs/Lab11.html" target="_blank">Lab 11 Instructions — Fast Robots @ Cornell</a></li>
+                        <li><a href="https://jcai2565.github.io/2025/04/23/lab11.html" target="_blank">Jeffery Cai's Lab 11 Report</a> (referenced for how Jeffery approach this task)</li>
+                        <li>Grammarly writing assistance is used to fix my report's grammar and sentence flow.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </article>
+    </main>
+    <footer id="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p class="footer-name">Michelle Yang</p>
+                <a href="mailto:my394@cornell.edu">my394@cornell.edu</a>
+            </div>
+            <div class="footer-right">
+                <p>ECE 4160 Fast Robots</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
